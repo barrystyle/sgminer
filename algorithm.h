@@ -44,6 +44,7 @@ typedef enum {
   ALGO_TRIBUS,
   ALGO_VELTOR,
   ALGO_ETHASH,
+  ALGO_NIGHTCAP,
   ALGO_COUNT
 } algorithm_type_t;
 

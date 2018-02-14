@@ -87,6 +87,7 @@ sgminer_SOURCES += algorithm/blake256.c algorithm/blake256.h
 sgminer_SOURCES += algorithm/blakecoin.c algorithm/blakecoin.h
 sgminer_SOURCES += algorithm/decred.c
 sgminer_SOURCES += algorithm/ethash.c algorithm/ethgencache.c algorithm/ethash.h algorithm/eth-sha3.c algorithm/eth-sha3.h
+sgminer_SOURCES += algorithm/nightcap.c algorithm/nightgencache.c algorithm/nightcap.h
 
 bin_SCRIPTS	= $(top_srcdir)/kernel/*.cl
 
