@@ -224,12 +224,11 @@ __kernel void search(
 	__constant hash32_t const* g_header,
 	__global hash128_t const* g_dag,
 	uint DAG_SIZE,
-	ulong start_nonce,
 	ulong target,
 	uint isolate
 	)
 {
-	const uint gid = get_global_id(0);
+	const uint gid = get_global_id(0); // i.e. nonce
 	const uint thread_id = get_local_id(0) & 3U;
 	const uint hash_id = get_local_id(0) >> 2U;
 

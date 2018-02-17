@@ -1407,7 +1407,7 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
     cl_uint zero = 0;
     cl_uint CacheSizeNodes = CacheSize / sizeof(NightcapNode);
 
-    const size_t items = 1UL << 21;  // NOTE: this is the work unit we are using.
+    const size_t items = 1UL << 21;  // NOTE: this is the work unit we are using for dag
 
     // Enqueue DAG gen kernel (multiple launches to prevent driver locks)
     kernel = &clState->GenerateDAG;
@@ -1453,11 +1453,6 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
     //exit(0); // DEBUG
   }
 
-  mutex_lock(&eth_nonce_lock);
-  HighNonce = eth_nonce++;
-  blk->work->Nonce = (cl_ulong) HighNonce << 32;
-  mutex_unlock(&eth_nonce_lock);
-
   num = 0;
   kernel = &clState->kernel;
 
@@ -1468,7 +1463,6 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
   CL_SET_ARG(clState->CLbuffer0);
   CL_SET_ARG(clState->DAG);
   CL_SET_ARG(ItemsArg);
-  CL_SET_ARG(blk->work->Nonce);
   CL_SET_ARG(le_target);
   CL_SET_ARG(Isolate);
 
