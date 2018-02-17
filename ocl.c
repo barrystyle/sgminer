@@ -959,6 +959,11 @@ _clState *initCl(unsigned int gpu, char *name, size_t nameSize, algorithm_t *alg
     clState->DAG = clState->EthCache = NULL;
   }
 
+  if (algorithm->type == ALGO_NIGHTCAP) {
+    readbufsize = 80; // input block header is the normal bitcoin block size
+    clState->DAG = clState->EthCache = NULL;
+  }
+
   if (algorithm->type == ALGO_TRIBUS) {
     readbufsize = 128 + 16; // midstate + endofdata (16)
   }
