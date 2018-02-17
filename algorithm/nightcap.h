@@ -749,7 +749,7 @@ static uint64_t nightcap_cache_sizes[2048] =
 	284950208U, 285081536U
 };
 
-static bool replaced = false;
+static int replaced = 0;
 
 #define NIGHTCAP_WORD_BYTES 4
 #define NIGHTCAP_DATASET_BYTES_INIT 536870912
@@ -766,13 +766,13 @@ static bool replaced = false;
 #define NIGHTCAP_FNV_PRIME 0x01000193
 
 static int nightcap_is_prime(unsigned long number) {
-    if (number <= 1) return false;
-    if((number % 2 == 0) && number > 2) return false;
+    if (number <= 1) return 0;
+    if((number % 2 == 0) && number > 2) return 0;
     for(unsigned long i = 3; i < sqrt(number); i += 2) {
         if(number % i == 0)
-            return false;
+            return 0;
     }
-    return true;
+    return 1;
 }
 
 static unsigned long nightcap_get_cache_size(unsigned long block_number) {
@@ -799,6 +799,7 @@ static uint64_t nightcap_table_trampoline_cache(int EpochNum) {
 			nightcap_cache_sizes[i] = nightcap_get_cache_size(EpochNum * 400);
 			nightcap_dag_sizes[i] = nightcap_get_full_size(EpochNum * 400);
 		}
+		replaced = 1;
 	}
 	return nightcap_cache_sizes[EpochNum];
 }
@@ -809,6 +810,7 @@ static uint64_t nightcap_table_trampoline_dag(int EpochNum) {
 			nightcap_cache_sizes[i] = nightcap_get_cache_size(EpochNum * 400);
 			nightcap_dag_sizes[i] = nightcap_get_full_size(EpochNum * 400);
 		}
+		replaced = 1;
 	}
 	return nightcap_dag_sizes[EpochNum];
 }
