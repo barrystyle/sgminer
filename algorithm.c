@@ -53,6 +53,7 @@
 
 #include <inttypes.h>
 #include <string.h>
+#include <assert.h>
 
 const char *algorithm_type_str[] = {
   "Unknown",
@@ -1382,9 +1383,10 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
       *(uint32_t*) EthCache[idx] = blk->work->EpochNumber;
 		  NightcapGenerateCache(EthCache[idx] + 64, blk->work->seedhash, CacheSize);           // Cache is offset by 64 again
 
-      //FILE* fp = fopen("nightcap_cache.dat", "wb");
-      //fwrite(EthCache[idx] + 64, 1, CacheSize, fp);
-      //fclose(fp);
+      FILE* fp = fopen("nightcap_cache.dat", "wb");
+      fwrite(EthCache[idx] + 64, 1, CacheSize, fp);
+      fclose(fp);
+		exit(1);
     }
     else
       cg_dlock(&EthCacheLock[idx]);
@@ -1407,7 +1409,7 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
     cl_uint zero = 0;
     cl_uint CacheSizeNodes = CacheSize / sizeof(NightcapNode);
 
-    const size_t items = 1UL << 21;  // NOTE: this is the work unit we are using for dag
+    size_t items = 1UL << 21;  // NOTE: this is the work unit we are using for dag
 
     // Enqueue DAG gen kernel (multiple launches to prevent driver locks)
     kernel = &clState->GenerateDAG;
@@ -1464,7 +1466,6 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
   CL_SET_ARG(clState->DAG);
   CL_SET_ARG(ItemsArg);
   CL_SET_ARG(le_target);
-  CL_SET_ARG(Isolate);
 
   return(status);
 }
