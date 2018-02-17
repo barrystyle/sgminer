@@ -801,7 +801,8 @@ _clState *initCl(unsigned int gpu, char *name, size_t nameSize, algorithm_t *alg
     return NULL;
   }
 
-  if(algorithm->type == ALGO_ETHASH) {
+  if(algorithm->type == ALGO_ETHASH ||
+	  algorithm->type == ALGO_NIGHTCAP) {
     clState->GenerateDAG = clCreateKernel(clState->program, "GenerateDAG", &status);
     if (status != CL_SUCCESS) {
       applog(LOG_ERR, "Error %d while creating DAG generation kernel.", (int) status);

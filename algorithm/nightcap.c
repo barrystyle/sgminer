@@ -2,10 +2,53 @@
 
 #include "config.h"
 #include "miner.h"
+#include "util.h"
 #include "algorithm/ethash.h"
+#include "algorithm/nightcap.h"
+#include "sph/sph_blake.h"
 
-extern cglock_t NightcapCacheLock[2];
-extern uint8_t* NightcapCache[2];
+
+#ifdef _MSC_VER
+#define restrict __restrict
+#endif
+
+// NOTE: reusing eth cache locks
+
+extern cglock_t EthCacheLock[2];
+extern uint8_t* EthCache[2];
+
+extern pthread_mutex_t eth_nonce_lock;
+extern uint32_t eth_nonce;
+
+// OutHash & MixHash MUST have 32 bytes allocated (at least)
+void LightNightcap(uint8_t *restrict OutHash, uint8_t *restrict MixHash, const uint8_t *restrict HeaderPoWHash, const NightcapNode *Cache, const uint64_t EpochNumber, const uint64_t Nonce)
+{
+	// TODO
+}
+
+void nightcap_regenhash(struct work *work)
+{
+	work->Nonce += *((uint32_t *)(work->data + 32));
+	applog(LOG_DEBUG, "Regenhash: First qword of input: 0x%016llX.", work->Nonce);
+	int idx = work->EpochNumber % 2;
+	//cg_rlock(&EthCacheLock[idx]);
+	LightNightcap(work->hash, work->mixhash, work->data, (NightcapNode*)(EthCache[idx] + sizeof(NightcapNode)), work->EpochNumber, work->Nonce);
+	//cg_runlock(&EthCacheLock[idx]);
+
+	char *DbgHash = bin2hex(work->hash, 32);
+
+	applog(LOG_DEBUG, "Regenhash result: %s.", DbgHash);
+	applog(LOG_DEBUG, "Last ulong: 0x%016llX.", bswap_64(*((uint64_t *)(work->hash + 0))));
+	free(DbgHash);
+}
+
+#if 0
+
+// TOFIX
+
+#define FNV_PRIME		0x01000193
+
+#define fnv(x, y)		(((x) * FNV_PRIME) ^ (y))
 
 #ifdef _MSC_VER
 #define restrict __restrict
@@ -15,13 +58,6 @@ typedef struct _DAG64
 {
 	uint32_t Columns[16];
 } DAG64;
-
-typedef union _Node
-{
-	uint8_t bytes[8 * 4];
-	uint32_t words[8];
-	uint64_t double_words[8 / 2];
-} Node;
 
 uint32_t NightCapCalcEpochNumber(uint8_t *SeedHash)
 {
@@ -84,7 +120,7 @@ void LightNightcap(uint8_t *restrict OutHash, uint8_t *restrict MixHash, const u
 	// later for the final hash, and is therefore saved.
 	memcpy(TmpBuf, HeaderPoWHash, 32UL);
 	memcpy(TmpBuf + 8UL, &Nonce, 8UL);
-	sha3_512((uint8_t *)TmpBuf, 64UL, (uint8_t *)TmpBuf, 40UL);
+	// TOFIX sha3_512((uint8_t *)TmpBuf, 64UL, (uint8_t *)TmpBuf, 40UL);
 
 	memcpy(MixState, TmpBuf, 64UL);
 
@@ -101,11 +137,11 @@ void LightNightcap(uint8_t *restrict OutHash, uint8_t *restrict MixHash, const u
 		Node DAGSliceNodes[2];
 		DAGSliceNodes[0] = CalcDAGItem(EthCache, NodeCount, row << 1);
 		DAGSliceNodes[1] = CalcDAGItem(EthCache, NodeCount, (row << 1) + 1);
-		DAG128 *DAGSlice = (DAG128 *)DAGSliceNodes;
+		// TOFIX DAG128 *DAGSlice = (DAG128 *)DAGSliceNodes;
 
 		for(uint32_t col = 0; col < 32; ++col)
 		{
-			MixState[col] = fnv(MixState[col], DAGSlice->Columns[col]);
+			// TOFIX MixState[col] = fnv(MixState[col], DAGSlice->Columns[col]);
 			MixValue = col == ((i + 1) & 0x1F) ? MixState[col] : MixValue;
 		}
 	}
@@ -138,3 +174,5 @@ void ethash_regenhash(struct work *work)
 	applog(LOG_DEBUG, "Last ulong: 0x%016llX.", bswap_64(*((uint64_t *)(work->hash + 0))));
 	free(DbgHash);
 }
+
+#endif
