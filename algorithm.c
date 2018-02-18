@@ -9,6 +9,7 @@
 
 #include "algorithm.h"
 #include "sph/sph_sha2.h"
+#include "sph/sph_blake.h"
 #include "ocl.h"
 #include "ocl/build_kernel.h"
 
@@ -1358,6 +1359,8 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
     clState->EpochNumber = blk->work->EpochNumber;
     cl_ulong CacheSize = nightcap_get_cache_size(blk->work->HeightNumber);  //NightcapGetCacheSize(blk->work->EpochNumber);
     cl_event DAGGenEvent;
+	 uint8_t seedhash[32];
+	 sph_blake256_context ctx_blake;
 
     applog(LOG_INFO, "DAG being regenerated on %s", cgpu->name);
     if (clState->EthCache)
@@ -1373,6 +1376,14 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
 
     clState->EthCache = clCreateBuffer(clState->context, CL_MEM_READ_ONLY, CacheSize, NULL, &status);
 
+	 // calc seed hash here
+	 memset(seedhash, '\0', sizeof(seedhash));
+	 for (size_t i = 0; i < (unsigned long)floor(blk->work->HeightNumber / 400.0); i++) {
+		 sph_blake256_init(&ctx_blake);
+		 sph_blake256(&ctx_blake, seedhash, 32);
+		 sph_blake256_close(&ctx_blake, seedhash);
+	 }
+
     int idx = blk->work->EpochNumber % 2;
     cg_ilock(&EthCacheLock[idx]);
     bool update = (EthCache[idx] == NULL || *(uint32_t*) EthCache[idx] != blk->work->EpochNumber);
@@ -1380,7 +1391,7 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
       cg_ulock(&EthCacheLock[idx]);
       EthCache[idx] = (uint8_t*) realloc(EthCache[idx], sizeof(uint8_t) * CacheSize + 64); // NOTE: for some reason at least 64 bytes
       *(uint32_t*) EthCache[idx] = blk->work->EpochNumber;
-		  NightcapGenerateCache(EthCache[idx] + 64, blk->work->seedhash, CacheSize);           // Cache is offset by 64 again
+		  NightcapGenerateCache(EthCache[idx] + 64, seedhash, CacheSize);           // Cache is offset by 64 again
 		  
 		  /*
       FILE* fp = fopen("nightcap_cache.dat", "wb");
