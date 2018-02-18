@@ -1421,7 +1421,7 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
     cl_uint zero = 0;
     cl_uint CacheSizeNodes = CacheSize / sizeof(NightcapNode);
 
-    size_t items = 1UL << 21;  // NOTE: this is the work unit we are using for dag
+	 size_t items = 1UL << 21;  // NOTE: this is the work unit we are using for dag
 
     // Enqueue DAG gen kernel (multiple launches to prevent driver locks)
     kernel = &clState->GenerateDAG;
@@ -1436,10 +1436,37 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
       CL_SET_ARG(clState->DAG);
       CL_SET_ARG(CacheSizeNodes);
       //CL_SET_ARG(Isolate);
+#ifdef DEBUG_NIGHTCAP_DAG
+		applog(LOG_INFO, "Submitting DAG Kernel");
+#endif
       status |= clEnqueueNDRangeKernel(clState->commandQueue, clState->GenerateDAG, 1, NULL, &items, NULL, 0, NULL, &DAGGenEvent);
+
+#ifdef DEBUG_NIGHTCAP_DAG
+		if (status != CL_SUCCESS) {
+			applog(LOG_INFO, "DAG Submit Failed");
+		}
+		else {
+			applog(LOG_INFO, "DAG Submit Success");
+		}
+#endif
+
       status |= clWaitForEvents(1, &DAGGenEvent);
+
+#ifdef DEBUG_NIGHTCAP_DAG
+		if (status != CL_SUCCESS) {
+			applog(LOG_INFO, "DAG Wait Failed");
+		}
+		else {
+			applog(LOG_INFO, "DAG Wait Success");
+		}
+#endif
+
       applog(LOG_INFO, "Generating DAG %s %2.0f%%", cgpu->name, ((double)(zero+items) / DAGItems) * 100);
     }
+
+#ifdef DEBUG_NIGHTCAP_DAG
+	 applog(LOG_INFO, "Processing last DAG elements");
+#endif
 
     // Last items..
     if (status == 0 && DAGItems % items) {
@@ -1454,8 +1481,52 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
       CL_SET_ARG(CacheSizeNodes);
       //CL_SET_ARG(Isolate);
       status |= clEnqueueNDRangeKernel(clState->commandQueue, clState->GenerateDAG, 1, NULL, &items, NULL, 0, NULL, &DAGGenEvent);
+
+
+#ifdef DEBUG_NIGHTCAP_DAG
+		if (status != CL_SUCCESS) {
+			applog(LOG_INFO, "DAG Submit2 Failed");
+		}
+		else {
+			applog(LOG_INFO, "DAG Submit2 Success");
+		}
+#endif
+
       status |= clWaitForEvents(1, &DAGGenEvent);
+
+
+#ifdef DEBUG_NIGHTCAP_DAG
+		if (status != CL_SUCCESS) {
+			applog(LOG_INFO, "DAG Wait2 Failed");
+		}
+		else {
+			applog(LOG_INFO, "DAG Wait2 Success");
+		}
+#endif
     }
+
+	 // DEBUG DUMP THE GENERATED DAG
+#ifdef DEBUG_NIGHTCAP_DAG
+	 uint8_t *DAG_DEBUG = (uint8_t*)malloc(DAGSize);
+	 status |= clEnqueueReadBuffer(clState->commandQueue, clState->DAG, true, 0, sizeof(cl_uchar) * DAGSize, DAG_DEBUG, 0, NULL, &DAGGenEvent);
+
+	 if (status != CL_SUCCESS) {
+		 applog(LOG_INFO, "DAG READ Failed");
+	 }
+
+	 status |= clWaitForEvents(1, &DAGGenEvent);
+
+	 if (status != CL_SUCCESS) {
+		 applog(LOG_INFO, "DAG READ EVENT Failed");
+	 }
+
+	 FILE* fp;
+	 fp = fopen("generated_dag.dat", "wb");
+	 fwrite(DAG_DEBUG, 1, DAGSize, fp);
+	 fclose(fp);
+
+#endif
+	 // DEBUG END
 
     clReleaseEvent(DAGGenEvent);
 
