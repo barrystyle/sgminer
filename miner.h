@@ -1350,6 +1350,7 @@ struct pool {
   int works;
   uint8_t SeedHash[32];
   uint32_t EpochNumber;
+  uint32_t HeightNumber;
   uint8_t Target[32];
   uint8_t EthWork[32];
 
@@ -1505,6 +1506,7 @@ struct work {
 
   uint32_t EpochNumber;
   uint64_t Nonce;
+  uint32_t HeightNumber;
 
   int   rolls;
   int   drv_rolllimit; /* How much the driver can roll ntime */

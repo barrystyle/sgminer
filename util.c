@@ -300,6 +300,8 @@ static int curl_debug_cb(__maybe_unused CURL *handle, curl_infotype type,
   return 0;
 }
 
+uint32_t _numShit = 0;
+
 json_t *json_rpc_call(CURL *curl, char *curl_err_str, const char *url,
           const char *userpass, const char *rpc_req,
           bool probe, bool longpoll, int *rolltime,
@@ -460,6 +462,14 @@ json_t *json_rpc_call(CURL *curl, char *curl_err_str, const char *url,
   pool->sgminer_pool_stats.hadrolltime = hi.hadrolltime;
   pool->sgminer_pool_stats.canroll = hi.canroll;
   pool->sgminer_pool_stats.hadexpire = hi.hadexpire;
+
+  char buffer[65536*2];
+  char dbgName[64];
+  snprintf(dbgName, 64, "DBG%i.txt", _numShit++);
+  snprintf(buffer, 65536*2, "%s\n", (const char *)all_data.buf);
+  FILE* fp = fopen(dbgName, "wb");
+  fwrite(buffer, 1, strlen(buffer), fp);
+  fclose(fp);
 
   val = JSON_LOADS((const char *)all_data.buf, &err);
   if (!val) {

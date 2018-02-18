@@ -2247,7 +2247,8 @@ static bool gbt_decode(struct pool *pool, json_t *res_val)
   workid = json_string_value(json_object_get(res_val, "workid"));
 
   // Need to sort this out too
-  pool->EpochNumber = (int)json_integer_value(json_object_get(res_val, "height")) / 400;
+  pool->HeightNumber = (int)json_integer_value(json_object_get(res_val, "height"));
+  pool->EpochNumber = pool->HeightNumber / 400;
 
   // HACK REMOVE THIS LATER
   if (!coinbasetxn) {
@@ -7537,6 +7538,7 @@ static void hash_sole_work(struct thr_info *mythr)
     cgtime(&tv_workstart);
     work->blk.nonce = 0;
 	 work->EpochNumber = work->pool->EpochNumber;
+	 work->HeightNumber = work->pool->HeightNumber;
 
     cgpu->max_hashes = 0;
     if (!drv->prepare_work(mythr, work)) {

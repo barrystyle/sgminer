@@ -1340,7 +1340,7 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
   unsigned int num = 0;
   cl_int status = 0;
   cl_uint le_target;
-  cl_ulong DAGSize = nightcap_get_full_size(blk->work->EpochNumber * 400); //EthGetDAGSize(blk->work->EpochNumber);
+  cl_ulong DAGSize = nightcap_get_full_size(blk->work->HeightNumber); //EthGetDAGSize(blk->work->EpochNumber);
   size_t DAGItems = (size_t) (DAGSize / sizeof(NightcapNode));
   struct cgpu_info *cgpu = blk->work->thr ? blk->work->thr->cgpu : NULL; // see get_work()
 
@@ -1356,7 +1356,7 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
   if (clState->EpochNumber != blk->work->EpochNumber)
   {
     clState->EpochNumber = blk->work->EpochNumber;
-    cl_ulong CacheSize = nightcap_get_cache_size(blk->work->EpochNumber * 400);  //NightcapGetCacheSize(blk->work->EpochNumber);
+    cl_ulong CacheSize = nightcap_get_cache_size(blk->work->HeightNumber);  //NightcapGetCacheSize(blk->work->EpochNumber);
     cl_event DAGGenEvent;
 
     applog(LOG_INFO, "DAG being regenerated on %s", cgpu->name);
