@@ -1389,21 +1389,21 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
     bool update = (EthCache[idx] == NULL || *(uint32_t*) EthCache[idx] != blk->work->EpochNumber);
     if (update) {
       cg_ulock(&EthCacheLock[idx]);
-      EthCache[idx] = (uint8_t*) realloc(EthCache[idx], sizeof(uint8_t) * CacheSize + 64); // NOTE: for some reason at least 64 bytes
+      EthCache[idx] = (uint8_t*) realloc(EthCache[idx], (sizeof(uint8_t) * CacheSize) + 32); // NOTE: epoch is at the start
       *(uint32_t*) EthCache[idx] = blk->work->EpochNumber;
-		  NightcapGenerateCache(EthCache[idx] + 64, seedhash, CacheSize);           // Cache is offset by 64 again
+		NightcapGenerateCache(EthCache[idx] + 32, seedhash, CacheSize);
 		  
-		  /*
+		 /*
       FILE* fp = fopen("nightcap_cache.dat", "wb");
-      fwrite(EthCache[idx] + 64, 1, CacheSize, fp);
+      fwrite(EthCache[idx] + 32, 1, CacheSize, fp);
       fclose(fp);*/
     }
     else
       cg_dlock(&EthCacheLock[idx]);
 
     if (status == CL_SUCCESS) {
-      // Load cache, offset by 64 again
-      status = clEnqueueWriteBuffer(clState->commandQueue, clState->EthCache, true, 0, sizeof(cl_uchar) * CacheSize, EthCache[idx] + 64, 0, NULL, NULL);
+      // Load cache, offset by epoch
+      status = clEnqueueWriteBuffer(clState->commandQueue, clState->EthCache, true, 0, sizeof(cl_uchar) * CacheSize, EthCache[idx] + 32, 0, NULL, NULL);
     }
 
     if (update)

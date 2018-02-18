@@ -32,7 +32,7 @@ void NightcapGenerateCache(uint8_t *cache, uint8_t* const seed, uint64_t cache_s
 			uint32_t item[NIGHTCAP_HASH_BYTES / sizeof(uint32_t)];
 			for (uint64_t dword = 0; dword < (NIGHTCAP_HASH_BYTES / sizeof(uint32_t)); dword++) {
 				item[dword] = cache[(mapper * (NIGHTCAP_HASH_BYTES / sizeof(uint32_t))) + dword]
-					^ cache[(target * (NIGHTCAP_HASH_BYTES / sizeof(uint32_t))) + dword];
+				            ^ cache[(target * (NIGHTCAP_HASH_BYTES / sizeof(uint32_t))) + dword];
 			}
 			sph_blake256_init(&ctx);
 			sph_blake256(&ctx, item, NIGHTCAP_HASH_BYTES);
