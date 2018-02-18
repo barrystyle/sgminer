@@ -6,12 +6,15 @@
 
 #include "algorithm/nightcap.h"
 
+#include "logging.h"
+
 // Output (cache_nodes) MUST have at least cache_size bytes
-void NightcapGenerateCache(uint8_t *cache, uint8_t* const seed, uint64_t cache_size)
+void NightcapGenerateCache(uint32_t *cache, uint8_t* const seed, uint64_t cache_size)
 {
 	uint64_t items = cache_size / NIGHTCAP_HASH_BYTES;
 	sph_blake256_context ctx_blake;
 	int64_t hashwords = NIGHTCAP_HASH_BYTES / NIGHTCAP_WORD_BYTES;
+
 	sph_blake256_context ctx;
 	sph_blake256_init(&ctx);
 	sph_blake256(&ctx, seed, NIGHTCAP_HASH_BYTES);

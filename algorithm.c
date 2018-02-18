@@ -1375,28 +1375,30 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
     }
 
     clState->EthCache = clCreateBuffer(clState->context, CL_MEM_READ_ONLY, CacheSize, NULL, &status);
+    
+    //FILE* fp;
 
-	 // calc seed hash here
-	 memset(seedhash, '\0', sizeof(seedhash));
-	 for (size_t i = 0; i < (unsigned long)floor(blk->work->HeightNumber / 400.0); i++) {
-		 sph_blake256_init(&ctx_blake);
-		 sph_blake256(&ctx_blake, seedhash, 32);
-		 sph_blake256_close(&ctx_blake, seedhash);
-	 }
+    // calc seed hash here
+    memset(seedhash, '\0', sizeof(seedhash));
+    for (size_t i = 0; i < (unsigned long)floor(blk->work->HeightNumber / 400.0); i++) {
+        sph_blake256_init(&ctx_blake);
+        sph_blake256(&ctx_blake, seedhash, 32);
+        sph_blake256_close(&ctx_blake, seedhash);
+    }
 
     int idx = blk->work->EpochNumber % 2;
     cg_ilock(&EthCacheLock[idx]);
     bool update = (EthCache[idx] == NULL || *(uint32_t*) EthCache[idx] != blk->work->EpochNumber);
     if (update) {
+      uint8_t* cachePtr;
       cg_ulock(&EthCacheLock[idx]);
+      
       EthCache[idx] = (uint8_t*) realloc(EthCache[idx], (sizeof(uint8_t) * CacheSize) + 32); // NOTE: epoch is at the start
       *(uint32_t*) EthCache[idx] = blk->work->EpochNumber;
-		NightcapGenerateCache(EthCache[idx] + 32, seedhash, CacheSize);
-		  
-		 /*
-      FILE* fp = fopen("nightcap_cache.dat", "wb");
-      fwrite(EthCache[idx] + 32, 1, CacheSize, fp);
-      fclose(fp);*/
+      cachePtr = EthCache[idx] + 32;
+      NightcapGenerateCache((uint32_t*)cachePtr, seedhash, CacheSize);
+
+      applog(LOG_INFO, "Generated DAG Cache");
     }
     else
       cg_dlock(&EthCacheLock[idx]);
