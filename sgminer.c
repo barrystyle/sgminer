@@ -2234,6 +2234,7 @@ static bool gbt_decode(struct pool *pool, json_t *res_val)
   uint8_t *extra_len;
   size_t cal_len;
 
+
   previousblockhash = json_string_value(json_object_get(res_val, "previousblockhash"));
   target = json_string_value(json_object_get(res_val, "target"));
   coinbasetxn = json_string_value(json_object_get(json_object_get(res_val, "coinbasetxn"), "data"));
@@ -2244,6 +2245,17 @@ static bool gbt_decode(struct pool *pool, json_t *res_val)
   submitold = json_is_true(json_object_get(res_val, "submitold"));
   bits = json_string_value(json_object_get(res_val, "bits"));
   workid = json_string_value(json_object_get(res_val, "workid"));
+
+  // Need to sort this out too
+  pool->EpochNumber = (int)json_integer_value(json_object_get(res_val, "height")) / 400;
+
+  // HACK REMOVE THIS LATER
+  if (!coinbasetxn) {
+	  coinbasetxn = json_string_value(json_object_get(res_val, "previousblockhash"));
+	  bits = json_string_value(json_object_get(res_val, "previousblockhash"));
+	  expires = (int)json_integer_value(json_object_get(res_val, "curtime"));
+  }
+  // HACK REMOVE THIS LATER
 
   if (!previousblockhash || !target || !coinbasetxn || !longpollid ||
       !expires || !version || !curtime || !bits) {
@@ -5993,7 +6005,8 @@ retry_stratum:
 
       /* Only use GBT if it supports coinbase append and
        * submit coinbase */
-      if (append && submit) {
+      // HACK REMOVE THIS LATER
+      if (true) {//append && submit) {
         pool->has_gbt = true;
         pool->rpc_req = gbt_req;
       }
@@ -7523,6 +7536,8 @@ static void hash_sole_work(struct thr_info *mythr)
 
     cgtime(&tv_workstart);
     work->blk.nonce = 0;
+	 work->EpochNumber = work->pool->EpochNumber;
+
     cgpu->max_hashes = 0;
     if (!drv->prepare_work(mythr, work)) {
       applog(LOG_ERR, "work prepare failed, exiting "

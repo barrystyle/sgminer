@@ -5,7 +5,6 @@
  */
 
 #define SPH_COMPACT_BLAKE_64 0
-#include "blake256.cl"
 
 
 #define ACCESSES   64
@@ -114,7 +113,7 @@ __constant static const uint  c_u256[16] = {
 
 inline uint sph_bswap32(uint in_swap)
 {
-   return uint(((in_swap >> 24) & 0x000000ff) |
+   return (uint)(((in_swap >> 24) & 0x000000ff) |
               ((in_swap >>  8) & 0x0000ff00) |
               ((in_swap <<  8) & 0x00ff0000) |
               ((in_swap << 24) & 0xff000000));
@@ -148,6 +147,8 @@ S2 = 0; \
 S3 = 0; \
 T0 = 0; \
 T1 = 0;
+
+#define BLAKE32_ROUNDS 14
 
 #define BLAKE256_COMPRESS32_STATE \
 uint M[16]; \
@@ -218,6 +219,22 @@ typedef union _Node
 	uint4 dqwords[2];
 } Node; // NOTE: should be HASH_BYTES long
 
+
+typedef union {
+	uint  uints[32 / sizeof(uint)];
+	ulong ulongs[32 / sizeof(ulong)];
+} hash32_t;
+
+typedef union {
+	uint   uints[128 / sizeof(uint)];
+	ulong  ulongs[128 / sizeof(ulong)];
+	uint2  uint2s[128 / sizeof(uint2)];
+	uint4  uint4s[128 / sizeof(uint4)];
+	uint8  uint8s[128 / sizeof(uint8)];
+	uint16 uint16s[128 / sizeof(uint16)];
+	ulong8 ulong8s[128 / sizeof(ulong8)];
+} hash128_t;
+
 __attribute__((reqd_work_group_size(WORKSIZE, 1, 1)))
 __kernel void search(
 	__global volatile uint* restrict g_output,
@@ -270,7 +287,7 @@ __kernel void GenerateDAG(uint start, __global const uint16 *_Cache, __global ui
 	for (uint parent = 0; parent < DATASET_PARENTS; ++parent)
 	{
 		// Calculate parent
-		uint ParentIdx = fnv(NodeIdx ^ i, DAGNode.dwords[parent & 7]) % LIGHT_SIZE; // NOTE: LIGHT_SIZE == items, &7 == %8
+		uint ParentIdx = fnv(NodeIdx ^ parent, DAGNode.dwords[parent & 7]) % LIGHT_SIZE; // NOTE: LIGHT_SIZE == items, &7 == %8
 		__global const Node *ParentNode = Cache + ParentIdx;
 
 		#pragma unroll
