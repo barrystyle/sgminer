@@ -6,7 +6,6 @@
 
 #define SPH_COMPACT_BLAKE_64 0
 
-
 #define ACCESSES   64
 #define MAX_OUTPUTS 255u
 #define barrier(x) mem_fence(x)
@@ -26,7 +25,7 @@
 #define ACCESSES 64
 #define FNV_PRIME 0x01000193U
 
-#define fnv(x, y) ((x) * FNV_PRIME ^ (y))
+#define fnv(x, y) ((x) * FNV_PRIME ^ (y)) % (0xffffffff)
 #define fnv_reduce(v) fnv(fnv(fnv(v.x, v.y), v.z), v.w)
 
 #ifdef cl_nv_pragma_unroll
@@ -70,7 +69,6 @@ static inline uint nv_bfe(const uint a, const uint start, const uint len) {
 }
 #define BFE(x, start, len) nv_bfe(x, start, len)
 #endif /* NVIDIA */
-
 
 // BEGIN BLAKE256
 
@@ -264,6 +262,8 @@ __kernel void GenerateDAG(uint start, __global const uint16 *_Cache, __global ui
 	BLAKE256_STATE;
 	BLAKE256_COMPRESS32_STATE;
 
+	//printf("generateDAG %u\n", NodeIdx);
+
 	// Apply blake to DAGNode
 
 	INIT_BLAKE256_STATE;
@@ -295,7 +295,8 @@ __kernel void GenerateDAG(uint start, __global const uint16 *_Cache, __global ui
 		{
 			// NOTE: fnv, we're basically operating on 4 ints at a time here
 			DAGNode.dqwords[x] *= (uint4)(FNV_PRIME);
-			DAGNode.dqwords[x] ^= ParentNode->dqwords[x];
+			DAGNode.dqwords[x] ^= ParentNode->dwords[0];
+			DAGNode.dqwords[x] %= SPH_C32(0xffffffff);
 		}
 	}
 	
