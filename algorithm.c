@@ -1381,11 +1381,11 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
       EthCache[idx] = (uint8_t*) realloc(EthCache[idx], sizeof(uint8_t) * CacheSize + 64); // NOTE: for some reason at least 64 bytes
       *(uint32_t*) EthCache[idx] = blk->work->EpochNumber;
 		  NightcapGenerateCache(EthCache[idx] + 64, blk->work->seedhash, CacheSize);           // Cache is offset by 64 again
+		  
 		  /*
       FILE* fp = fopen("nightcap_cache.dat", "wb");
       fwrite(EthCache[idx] + 64, 1, CacheSize, fp);
-      fclose(fp);
-		exit(1);*/
+      fclose(fp);*/
     }
     else
       cg_dlock(&EthCacheLock[idx]);
