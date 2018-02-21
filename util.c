@@ -1513,6 +1513,45 @@ static char *json_array_string(json_t *val, unsigned int entry)
   return NULL;
 }
 
+#if !HAVE_DECL_LE16DEC
+static inline uint16_t le16dec(const void *pp)
+{
+	const uint8_t *p = (uint8_t const *)pp;
+	return ((uint16_t)(p[0]) + ((uint16_t)(p[1]) << 8));
+}
+#endif
+
+
+/**
+* Extract bloc height     L H... here len=3, height=0x1333e8
+* "...0000000000ffffffff2703e83313062f503253482f043d61105408"
+*/
+static uint32_t getblocheight(uint8_t* coinbase)
+{
+	uint32_t height = 0;
+	uint8_t hlen = 0, *p, *m;
+
+	// find 0xffff tag
+	p = coinbase + 32;
+	m = p + 128;
+	while (*p != 0xff && p < m) p++;
+	while (*p == 0xff && p < m) p++;
+	if (*(p - 1) == 0xff && *(p - 2) == 0xff) {
+		p++; hlen = *p;
+		p++; height = le16dec(p);
+		p += 2;
+		switch (hlen) {
+		case 4:
+			height += 0x10000UL * le16dec(p);
+			break;
+		case 3:
+			height += 0x10000UL * (*p);
+			break;
+		}
+	}
+	return height;
+}
+
 static char *blank_merkel = "0000000000000000000000000000000000000000000000000000000000000000";
 
 static bool parse_notify(struct pool *pool, json_t *val)
@@ -1644,6 +1683,15 @@ static bool parse_notify(struct pool *pool, json_t *val)
   memcpy(pool->coinbase + cb1_len, pool->nonce1bin, pool->n1_len);
   // NOTE: gap for nonce2, filled at work generation time
   memcpy(pool->coinbase + cb1_len + pool->n1_len + pool->n2size, cb2, cb2_len);
+
+
+  // Grab height & epoc
+  pool->HeightNumber = getblocheight(pool->coinbase);
+  pool->EpochNumber = 0;
+  if (pool->algorithm.type == ALGO_NIGHTCAP) {
+	  pool->EpochNumber = pool->HeightNumber / 400;
+  }
+
   cg_wunlock(&pool->data_lock);
 
   if (opt_protocol) {
@@ -2772,7 +2820,7 @@ resend:
   recvd = true;
 
   val = JSON_LOADS(sret, &err);
-  free(sret);
+  //free(sret);
   if (!val) {
     applog(LOG_INFO, "JSON decode failed(%d): %s", err.line, err.text);
     goto out;
