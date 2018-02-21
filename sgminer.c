@@ -2140,6 +2140,20 @@ static double get_work_blockdiff(const struct work *work)
     applog(LOG_INFO, "Network difficulty %.3f", d);
     return d;
   }
+  else if (work->pool->algorithm.type == ALGO_NIGHTCAP) {
+	  // Normal stuff is horribly inaccurate, use this instead
+	  uint32_t diff_val = swab32(data[18]);   // NOTE: In this case, this needs to be swapped. Not sure if this also applies with atratum though.
+	  //diff_val = 458014203; // should be 853
+	  shift = (swab32(diff_val) & 0xff);
+	  diff64 = (diff_val & 0xffffff);
+	  if (!diff64) diff64 = 1;
+	  double d = (double)work->pool->algorithm.diff_numerator / (double)diff64;
+	  for (int m = shift; m < 29; m++) d *= 256.0;
+	  for (int m = 29; m < shift; m++) d /= 256.0;
+
+	  applog(LOG_INFO, "Network difficulty %.3f", d);
+	  return d;
+  }
   else {
     shift = work->data[72];
     powdiff = (8 * (0x1d - 3)) - (8 * (shift - 3));;
@@ -2175,6 +2189,8 @@ static void gen_gbt_work(struct pool *pool, struct work *work)
   memcpy(work->data + 4, pool->previousblockhash, 32);
   memcpy(work->data + 4 + 32 + 32, &pool->curtime, 4);
   memcpy(work->data + 4 + 32 + 32 + 4, &pool->gbt_bits, 4);
+
+  applog(LOG_DEBUG, "DATA COPIED INTO GBT: %u", ((uint32_t*)work->data)[18]);
 
   memcpy(work->target, pool->gbt_target, 32);
 
@@ -2217,6 +2233,15 @@ static void gen_gbt_work(struct pool *pool, struct work *work)
   cgtime(&work->tv_staged);
 }
 
+
+char debug_print_buf[1024];
+
+static const char* debug_print_nightcap_hash(const uint* hash)
+{
+	snprintf(debug_print_buf, 1024, "%08x%08x%08x%08x%08x%08x%08x%08x", hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7]);
+	return debug_print_buf;
+}
+
 static bool gbt_decode(struct pool *pool, json_t *res_val)
 {
   const char *previousblockhash;
@@ -2246,15 +2271,22 @@ static bool gbt_decode(struct pool *pool, json_t *res_val)
   bits = json_string_value(json_object_get(res_val, "bits"));
   workid = json_string_value(json_object_get(res_val, "workid"));
 
+  //uint32_t real_bits = 0;
+  //jobj_binary(res_val, "bits", &real_bits, sizeof(bits), true);
+
+  //real_bits = swab32(real_bits);
+  //double sr_diff = calc_nc_diff(real_bits);
+
+
+
   // Need to sort this out too
   pool->HeightNumber = (int)json_integer_value(json_object_get(res_val, "height"));
   pool->EpochNumber = pool->HeightNumber / 400;
 
   // HACK REMOVE THIS LATER
   if (!coinbasetxn) {
-	  coinbasetxn = json_string_value(json_object_get(res_val, "previousblockhash"));
-	  bits = json_string_value(json_object_get(res_val, "previousblockhash"));
-	  expires = (int)json_integer_value(json_object_get(res_val, "curtime"));
+	  coinbasetxn = json_string_value(json_object_get(res_val, "previousblockhash")); // still need to make this
+	  expires = (int)json_integer_value(json_object_get(res_val, "curtime")) + 4000; // complete guess
   }
   // HACK REMOVE THIS LATER
 
@@ -2311,6 +2343,9 @@ static bool gbt_decode(struct pool *pool, json_t *res_val)
 
   hex2bin(hash_swap, target, 32);
   swab256(pool->gbt_target, hash_swap);
+
+  //applog(LOG_INFO, "!rpc work target == %s\n", debug_print_nightcap_hash((uint32_t*)pool->gbt_target));
+  //applog(LOG_INFO, "!rpc work target BEFORE == %s\n", debug_print_nightcap_hash((uint32_t*)hash_swap));
 
   pool->gbt_expires = expires;
   pool->gbt_version = htobe32(version);

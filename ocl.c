@@ -827,10 +827,10 @@ _clState *initCl(unsigned int gpu, char *name, size_t nameSize, algorithm_t *alg
     }
   }
 
-  size_t bufsize;
-  size_t buf1size;
-  size_t buf3size;
-  size_t buf2size;
+  size_t bufsize=0;
+  size_t buf1size=0;
+  size_t buf3size=0;
+  size_t buf2size=0;
   size_t readbufsize = (algorithm->type == ALGO_CRE) ? 168 : 128;
 
   if (algorithm->rw_buffer_size < 0) {
@@ -882,6 +882,13 @@ _clState *initCl(unsigned int gpu, char *name, size_t nameSize, algorithm_t *alg
       applog(LOG_DEBUG, "lyra2REv2 buffer sizes: %lu RW, %lu RW", (unsigned long)bufsize, (unsigned long)buf1size);
       // scrypt/n-scrypt
     }
+	 else if (algorithm->type == ALGO_NIGHTCAP) {
+
+		 /* The scratch/pad-buffer needs 32kBytes memory per thread. */
+		 bufsize = LYRA_SCRATCHBUF_SIZE * cgpu->thread_concurrency;
+		 buf1size = 4 * 8 * cgpu->thread_concurrency; //result hashes
+		 readbufsize = 80; // normal bitcoin header size
+	 }
     else {
       size_t ipt = (algorithm->n / cgpu->lookup_gap + (algorithm->n % cgpu->lookup_gap > 0));
       bufsize = 128 * ipt * cgpu->thread_concurrency;
@@ -936,6 +943,14 @@ _clState *initCl(unsigned int gpu, char *name, size_t nameSize, algorithm_t *alg
         return NULL;
       }
     }
+	 else if (algorithm->type == ALGO_NIGHTCAP) {
+		 // need additionnal buffers
+		 clState->buffer1 = clCreateBuffer(clState->context, CL_MEM_READ_WRITE, buf1size, NULL, &status);
+		 if (status != CL_SUCCESS && !clState->buffer1) {
+			 applog(LOG_DEBUG, "Error %d: clCreateBuffer (buffer1), decrease TC or increase LG", status);
+			 return NULL;
+		 }
+	 }
     else {
       clState->buffer1 = clCreateBuffer(clState->context, CL_MEM_READ_WRITE, bufsize, NULL, &status); // we don't need that much just tired...
       if (status != CL_SUCCESS && !clState->buffer1) {

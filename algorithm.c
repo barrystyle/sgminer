@@ -159,6 +159,14 @@ static void append_nightcap_compiler_options(struct _build_kernel_data *data, st
   if (nvidia)
     sprintf(buf, " -DNVIDIA ");
   strcat(data->compiler_options, buf);
+
+  sprintf(buf, " %s-D MAX_GLOBAL_THREADS=%lu ",
+	  ((cgpu->lookup_gap > 0) ? " -D LOOKUP_GAP=2 " : ""), (unsigned long)cgpu->thread_concurrency);
+  strcat(data->compiler_options, buf);
+
+  sprintf(buf, "%stc%lu", ((cgpu->lookup_gap > 0) ? "lg" : ""), (unsigned long)cgpu->thread_concurrency);
+  strcat(data->binary_filename, buf);
+
   applog(LOG_DEBUG, "NIGHTCAP compiler options for %s : %s", cgpu->name, data->compiler_options);
 }
 
@@ -1334,20 +1342,42 @@ static cl_int queue_ethash_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_u
   return(status);
 }
 
+//#define DEBUG_NIGHTCAP_HASH
+
+
+#ifdef DEBUG_NIGHTCAP_HASH
+char debug_print_buf[1024];
+
+static const char* debug_print_nightcap_hash(const uint* hash)
+{
+	snprintf(debug_print_buf, 1024, "%08x%08x%08x%08x%08x%08x%08x%08x", hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7]);
+	return debug_print_buf;
+}
+
+#endif
+
 // TOFIX: properly adjust to nightcap
 static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_unused cl_uint threads)
 {
   cl_kernel *kernel;
   unsigned int num = 0;
   cl_int status = 0;
-  cl_uint le_target;
+  cl_ulong le_target;
   cl_ulong DAGSize = nightcap_get_full_size(blk->work->HeightNumber); //EthGetDAGSize(blk->work->EpochNumber);
   size_t DAGItems = (size_t) (DAGSize / sizeof(NightcapNode));
   struct cgpu_info *cgpu = blk->work->thr ? blk->work->thr->cgpu : NULL; // see get_work()
 
   assert(sizeof(NightcapNode) == 32);
 
-  le_target = *(cl_ulong *)(blk->work->device_target + 28); // target we should be looking for in kernel
+  // We need the target in flipped format
+
+  le_target = *(cl_ulong *)((uint32_t*)blk->work->device_target + 24); // target we should be looking for in kernel
+
+  uint32_t* mem_ptr = (uint32_t*)blk->work->device_target;// (uint32_t*)blk->work->device_target;
+  //applog(LOG_INFO, "HEIGHT %u TARGET INTS = %08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x", 
+  //	  blk->work->HeightNumber,
+ //  *mem_ptr++, *mem_ptr++, *mem_ptr++, *mem_ptr++, 
+	//  *mem_ptr++, *mem_ptr++, *mem_ptr++, *mem_ptr++ );
 
 
   // Submit block header data
@@ -1536,19 +1566,116 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
     }
     applog(LOG_NOTICE, "DAG ready on %s (%u MB)", cgpu->name, (unsigned) (DAGSize >> 20));
     //exit(0); // DEBUG
+
+
+	 // Remove cache
+	 if (clState->EthCache) {
+		 status |= clReleaseMemObject(clState->EthCache);
+		 clState->EthCache = NULL;
+		 if (status != CL_SUCCESS) {
+			 applog(LOG_ERR, "Error %d: Freeing eth cache.", status);
+			 return(status);
+		 }
+	 }
   }
 
   num = 0;
   kernel = &clState->kernel;
 
-  // Not nodes now (32 bytes), but DAG entries (64 bytes)
-  cl_uint ItemsArg = DAGItems >> 1;
+  cl_ulong ItemsArg = DAGItems;
+  cl_uint HeightArg = blk->work->HeightNumber;
 
-  CL_SET_ARG(clState->outputBuffer);
-  CL_SET_ARG(clState->CLbuffer0);
-  CL_SET_ARG(clState->DAG);
-  CL_SET_ARG(ItemsArg);
-  CL_SET_ARG(le_target);
+#ifdef DEBUG_NIGHTCAP_HASH
+  {
+	  cl_event HashGenEvent; 
+	  size_t items = 256;
+	  size_t offset_items = 0;
+	  uint32_t *HASH_DEBUG = (uint32_t*)malloc(256 * 32);
+
+	  memset(HASH_DEBUG, 255, 256 * 4);
+
+	  // Load the test block file
+	  FILE* fp = fopen("test_block.dat", "rb");
+	  fread(HASH_DEBUG, 1, 80, fp);
+	  fclose(fp);
+	  HeightArg = 25335;
+
+	  applog(LOG_INFO, "HEADER == %s", debug_print_nightcap_hash(&HASH_DEBUG[2 * 8])); 
+
+	  status = clEnqueueWriteBuffer(clState->commandQueue, clState->CLbuffer0, true, 0, 80, HASH_DEBUG, 0, NULL, NULL);
+
+	  num = 0; 
+	  CL_SET_ARG(clState->buffer1);       // output nonces (BUFFERSIZE, i.e. 256 ints)
+	  CL_SET_ARG(clState->CLbuffer0);     // input block header
+	  CL_SET_ARG(clState->DAG);           // DAG
+	  CL_SET_ARG(clState->padbuffer8);    // lyra node buffer
+	  CL_SET_ARG(ItemsArg);               // number of dag items
+	  CL_SET_ARG(HeightArg);              // height
+#ifndef DEBUG_NIGHTCAP_HASH_HASH_OUTPUT
+	  CL_SET_ARG(le_target);              // number of dag items
+#endif
+
+	  {
+		  status |= clEnqueueNDRangeKernel(clState->commandQueue, clState->kernel, 1, &offset_items, &items, NULL, 0, NULL, &HashGenEvent); 
+
+		  if (status != CL_SUCCESS) { 
+			  applog(LOG_INFO, "HASH Submit2 Failed");
+		  }
+		  else {
+			  applog(LOG_INFO, "HASH Submit2 Success");
+		  }
+
+		  status |= clWaitForEvents(1, &HashGenEvent);
+
+		  if (status != CL_SUCCESS) {
+			  applog(LOG_INFO, "HASH Wait2 Failed");
+		  }
+		  else {
+			  applog(LOG_INFO, "HASH Wait2 Success"); 
+		  }
+	  }
+
+	  // Dump output hashes
+	  {
+		  status |= clEnqueueReadBuffer(clState->commandQueue, clState->buffer1, true, 0, 256 * 32 * sizeof(uint32_t), HASH_DEBUG, 0, NULL, &HashGenEvent); 
+		   
+		  if (status != CL_SUCCESS) {
+			  applog(LOG_INFO, "HASH READ Failed"); 
+		  }
+
+		  status |= clWaitForEvents(1, &HashGenEvent);
+
+		  if (status != CL_SUCCESS) {
+			  applog(LOG_INFO, "HASH READ EVENT Failed");
+		  }
+
+#ifdef DEBUG_NIGHTCAP_HASH_HASH_OUTPUT
+		  for (uint32_t i = 0; i < 256; i++) {
+			  applog(LOG_INFO, "HASH[%u] == %s", i - offset_items, debug_print_nightcap_hash(&HASH_DEBUG[i * 8])); 
+		  }
+
+#else
+		  // Print found targets
+		  uint32_t num_hashes = HASH_DEBUG[255]; 
+		  applog(LOG_INFO, "Found %u possible targets", num_hashes);
+		  for (uint32_t i = 0; i < num_hashes; i++) {
+			  applog(LOG_INFO, "HASH[%u] == %u", i - offset_items,HASH_DEBUG[i]);
+		  }
+#endif
+
+	  }
+
+	  exit(0);
+  }
+#endif
+
+  CL_SET_ARG(clState->outputBuffer);  // output nonces (BUFFERSIZE, i.e. 256 ints)
+  CL_SET_ARG(clState->CLbuffer0);     // input block header
+  CL_SET_ARG(clState->DAG);           // DAG
+  CL_SET_ARG(clState->padbuffer8);    // lyra node buffer
+  CL_SET_ARG(ItemsArg);               // number of dag items
+  CL_SET_ARG(HeightArg);              // number of dag items
+  CL_SET_ARG(le_target);              // target we are looking for (at end of generated hash)
 
   return(status);
 }
@@ -1663,9 +1790,9 @@ static algorithm_settings_t algos[] = {
   { "vanilla",     ALGO_VANILLA,   "", 1, 1, 1, 0, 0, 0xFF, 0xFFFFULL, 0x000000ffUL, 0, 128, 0, blakecoin_regenhash, precalc_hash_blakecoin, queue_blake_kernel, gen_hash, NULL },
 
   { "ethash",     ALGO_ETHASH,   "", (1ULL << 32), (1ULL << 32), 1, 0, 0, 0xFF, 0xFFFF000000000000ULL, 0x00000000UL, 0, 128, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, ethash_regenhash, NULL, queue_ethash_kernel, gen_hash, append_ethash_compiler_options },
-  
-  // TODO: use correct params here
-  { "nightcap",   ALGO_NIGHTCAP,   "", 65536, 65536, 1, 0, 0, 0xFF, 0xFFFFFFFFULL, 0x0000ffffUL, 0, 128, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, nightcap_regenhash, NULL, queue_nightcap_kernel, gen_hash, append_nightcap_compiler_options },
+
+	  // NOTE: might need to tweak these
+  { "nightcap",   ALGO_NIGHTCAP,   "", 1, 65536, 65536, 0, 0, 0xFF, 0x0000ffffUL, 0x0000ffffUL, 0, -1, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, nightcap_regenhash, NULL, queue_nightcap_kernel, gen_hash, append_nightcap_compiler_options },
 
   // Terminator (do not remove)
   { NULL, ALGO_UNK, "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL }

@@ -821,7 +821,6 @@ static uint64_t nightcap_table_trampoline_dag(int EpochNum) {
 
 struct work;
 void NightcapGenerateCache(uint32_t *cache_nodes_in, uint8_t * const seedhash, uint64_t cache_size);
-void ethash_regenhash(struct work *work);
 uint32_t NightcapCalcEpochNumber(uint8_t *SeedHash);
 
 
