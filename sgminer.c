@@ -7519,12 +7519,23 @@ bool submit_nonce(struct thr_info *thr, struct work *work, uint32_t nonce)
 
 static inline bool abandon_work(struct work *work, struct timeval *wdiff, uint64_t hashes)
 {
-  if (wdiff->tv_sec > opt_scantime ||
-      work->blk.nonce >= MAXTHREADS - hashes ||
-      hashes >= 0xfffffffe ||
-      stale_work(work, false))
-    return true;
-  return false;
+	if (wdiff->tv_sec > opt_scantime) {
+		applog(LOG_WARNING, "Work took too long, consider increasing scantime.");
+		return true;
+	}
+
+	if (work->blk.nonce >= MAXTHREADS - hashes || hashes >= 0xfffffffe) {
+		applog(LOG_WARNING, "Generated too many nonces, giving up.");
+		return true;
+	}
+
+	if (stale_work(work, false))
+	{
+		applog(LOG_DEBUG, "Work is stale, aborting.");
+		return true;
+	}
+
+	return false;
 }
 
 static void mt_disable(struct thr_info *mythr, const int thr_id,
