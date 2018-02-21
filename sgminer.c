@@ -6042,7 +6042,7 @@ retry_stratum:
       /* Only use GBT if it supports coinbase append and
        * submit coinbase */
       // HACK REMOVE THIS LATER
-      if (true) {//append && submit) {
+      if (append && submit) {
         pool->has_gbt = true;
         pool->rpc_req = gbt_req;
       }
