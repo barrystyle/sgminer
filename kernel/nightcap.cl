@@ -343,16 +343,15 @@ __constant static const ulong SKEIN_IV512_256[8] = {
 	0xC36FBAF9393AD185UL, 0x3EEDBA1833EDFC13UL
 };
 
-__constant static const int ROT256[8][4] =
-{
-	46, 36, 19, 37,
-	33, 27, 14, 42,
-	17, 49, 36, 39,
-	44, 9, 54, 56,
-	39, 30, 34, 24,
-	13, 50, 10, 17,
-	25, 29, 39, 43,
-	8, 35, 56, 22,
+__constant static const int ROT256[8][4] = {
+	{ 46, 36, 19, 37 },
+	{ 33, 27, 14, 42 },
+	{ 17, 49, 36, 39 },
+	{ 44, 9, 54, 56  },
+	{ 39, 30, 34, 24 },
+	{ 13, 50, 10, 17 },
+	{ 25, 29, 39, 43 },
+	{ 8, 35, 56, 22  }
 };
 
 __constant static const ulong skein_ks_parity = 0x1BD11BDAA9FC1A22;
