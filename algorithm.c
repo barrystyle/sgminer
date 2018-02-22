@@ -1346,7 +1346,8 @@ static cl_int queue_ethash_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_u
 
 
 #ifdef DEBUG_NIGHTCAP_HASH
-char debug_print_buf[1024];
+
+static char debug_print_buf[1024];
 
 static const char* debug_print_nightcap_hash(const uint* hash)
 {
@@ -1371,7 +1372,9 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
 
   // We need the target in flipped format
 
-  le_target = *(cl_ulong *)((uint32_t*)blk->work->device_target + 24); // target we should be looking for in kernel
+  le_target = *(cl_ulong *)(blk->work->device_target + 24); // target we should be looking for in kernel
+
+  //applog(LOG_INFO, "target=%s\n", debug_print_nightcap_hash((const uint*)(blk->work->device_target)));
 
   uint32_t* mem_ptr = (uint32_t*)blk->work->device_target;// (uint32_t*)blk->work->device_target;
   //applog(LOG_INFO, "HEIGHT %u TARGET INTS = %08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x", 
