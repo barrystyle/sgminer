@@ -1435,7 +1435,7 @@ __kernel void search(
 	__global ulong4* g_lyre_nodes,
 	const ulong DAG_SIZE,
 	const uint height,
-	const ulong target
+	const uint target
 	)
 {
 	const uint gid = get_global_id(0); // i.e. nonce
@@ -1478,12 +1478,12 @@ __kernel void search(
 	hashimoto(block, g_dag, DAG_SIZE, height, DMatrix);
 
 	// Check target
-	ulong* out_long = &block[0];
+	//ulong* out_long = &block[0];
 	//out_long[3] = 0;
 
 	// target itself should be in little-endian format, 
 #ifdef NVIDIA
-	if (out_long[3] <= target)
+	if (block[7] <= target)
 	{
 		//printf("Nonce %u Found target, %lx <= %lx\n", gid, out_long[3], target);
 		uint slot = atomic_inc(&g_output[MAX_OUTPUTS]);
@@ -1492,7 +1492,7 @@ __kernel void search(
 		g_output[slot & MAX_OUTPUTS] = gid;
 	}
 #else
-	if (out_long[3] <= target)
+	if (block[7] <= target)
 	{
 		//printf("Nonce %u Found target, %lx <= %lx\n", gid, out_long[3], target);
 		uint slot = min(MAX_OUTPUTS-1u, convert_uint(atomic_inc(&g_output[MAX_OUTPUTS])));

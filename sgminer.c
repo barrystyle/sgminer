@@ -7437,13 +7437,18 @@ bool test_nonce(struct work *work, uint32_t nonce)
   rebuild_nonce(work, nonce);
 
   // for Neoscrypt, the diff1targ value is in work->target
-  if (work->pool->algorithm.type == ALGO_NEOSCRYPT || work->pool->algorithm.type == ALGO_PLUCK
-    || work->pool->algorithm.type == ALGO_YESCRYPT || work->pool->algorithm.type == ALGO_YESCRYPT_MULTI) {
+  if (work->pool->algorithm.type == ALGO_NEOSCRYPT || work->pool->algorithm.type == ALGO_PLUCK || 
+	  work->pool->algorithm.type == ALGO_YESCRYPT || work->pool->algorithm.type == ALGO_YESCRYPT_MULTI )
+  {
     diff1targ = ((uint32_t *)work->target)[7];
   }
   else if (work->pool->algorithm.type == ALGO_ETHASH) {
     uint64_t target = *(uint64_t*) (work->device_target + 24);
     return (bswap_64(*(uint64_t*) work->hash) <= target);
+  }
+  else if (work->pool->algorithm.type == ALGO_NIGHTCAP) {
+	  diff1targ = ((uint32_t *)work->target)[7];
+	  return *hash_32 <= diff1targ;
   }
   else {
     diff1targ = work->pool->algorithm.diff1targ;

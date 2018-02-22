@@ -1363,7 +1363,7 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
   cl_kernel *kernel;
   unsigned int num = 0;
   cl_int status = 0;
-  cl_ulong le_target;
+  cl_uint le_target;
   cl_ulong DAGSize = nightcap_get_full_size(blk->work->HeightNumber); //EthGetDAGSize(blk->work->EpochNumber);
   size_t DAGItems = (size_t) (DAGSize / sizeof(NightcapNode));
   struct cgpu_info *cgpu = blk->work->thr ? blk->work->thr->cgpu : NULL; // see get_work()
@@ -1372,7 +1372,7 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
 
   // We need the target in flipped format
 
-  le_target = *(cl_ulong *)(blk->work->device_target + 24); // target we should be looking for in kernel
+  le_target = *(cl_uint *)(blk->work->device_target + 28); // target we should be looking for in kernel
 
   //applog(LOG_INFO, "target=%s\n", debug_print_nightcap_hash((const uint*)(blk->work->device_target)));
 
