@@ -1868,7 +1868,7 @@ static bool parse_diff(struct pool *pool, json_t *val)
       applog(pool == current_pool() ? LOG_NOTICE : LOG_DEBUG, "%s difficulty changed to %d", get_pool_name(pool), idiff);
     }
     else {
-      applog(pool == current_pool() ? LOG_NOTICE : LOG_DEBUG, "%s difficulty changed to %.3f", get_pool_name(pool), diff);
+      applog(pool == current_pool() ? LOG_NOTICE : LOG_DEBUG, "%s difficulty changed to %.8f", get_pool_name(pool), diff);
     }
   }
   else {
