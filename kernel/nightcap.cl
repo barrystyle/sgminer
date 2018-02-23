@@ -43,8 +43,12 @@ typedef union {
 	ulong h8[4];
 } hash32_t;
 
-#define fnv(x, y) ((x) * FNV_PRIME ^ (y)) % (0xffffffff)
-#define fnv_reduce(v) fnv(fnv(fnv(v.x, v.y), v.z), v.w)
+//#define fnv(x, y) ((x) * FNV_PRIME ^ (y)) % (0xffffffff)
+//#define fnv_reduce(v) fnv(fnv(fnv(v.x, v.y), v.z), v.w)
+
+uint fnv(const uint v1, const uint v2) {
+	return ((v1 * FNV_PRIME) ^ v2) % (0xffffffff);
+}
 
 #ifdef cl_nv_pragma_unroll
 #define NVIDIA
