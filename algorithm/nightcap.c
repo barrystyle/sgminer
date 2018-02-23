@@ -199,6 +199,24 @@ static struct CHashimotoResult light_hashimoto(const uint8_t *blockToHash, const
 	return result;
 }
 
+void test_hashimoto(uint32_t height)
+{
+	uint32_t idx = (height / 400) % 2;
+	uint32_t endiandata[20];
+	uint64_t cache_size = nightcap_get_cache_size(height);
+	uint64_t full_size = nightcap_get_full_size(height);
+
+	memset(endiandata, '\0', sizeof(endiandata));
+
+	cg_rlock(&EthCacheLock[idx]);
+
+	struct CHashimotoResult res = light_hashimoto((uint8_t*)endiandata, (uint32_t*)(EthCache[idx] + 32), cache_size, full_size, height);
+
+	printf("LightHashimoto(%u, %u) -> %08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x\n", full_size, height, res.result[0], res.result[1], res.result[2], res.result[3], res.result[4], res.result[5], res.result[6], res.result[7]);
+
+	cg_runlock(&EthCacheLock[idx]);
+}
+
 void nightcap_regenhash(struct work *work)
 {
 	uint32_t idx = work->EpochNumber % 2;
