@@ -1366,11 +1366,11 @@ void hashimoto(uint *blockToHash, __global const uint *dag, const ulong n, const
     uint mix[MIX_BYTES/sizeof(uint)];
     uint newdata[MIX_BYTES/sizeof(uint)];
 
-    uint nonce = sph_bswap32(blockToHash[19]);
+    //uint nonce = sph_bswap32(blockToHash[19]);
 	
 	lyra2re2_hash80(blockToHash,blockToHash, nodes);
 
-    //printf("nonce(%u) -> %08x%08x%08x%08x%08x%08x%08x%08x\n", nonce, blockToHash[0], blockToHash[1], blockToHash[2], blockToHash[3], blockToHash[4], blockToHash[5], blockToHash[6], blockToHash[7]);
+    //printf("nonce(%u) -> %08x%08x%08x%08x%08x%08x%08x%08x\n", nonce_debug, blockToHash[0], blockToHash[1], blockToHash[2], blockToHash[3], blockToHash[4], blockToHash[5], blockToHash[6], blockToHash[7]);
 
 	mix[0] = blockToHash[0];
 	mix[1] = blockToHash[1];
@@ -1437,7 +1437,7 @@ __kernel void search(
 	__constant uint const* g_header,
 	__global uint const* g_dag,
 	__global ulong4* g_lyre_nodes,
-	const ulong DAG_SIZE,
+	const ulong DAG_ITEM_COUNT,
 	const uint height,
 	const uint target
 	)
@@ -1479,7 +1479,9 @@ __kernel void search(
 	}
 
 	// Run hashimoto (result hash output to block)
-	hashimoto(block, g_dag, DAG_SIZE, height, DMatrix);
+	hashimoto(block, g_dag, DAG_ITEM_COUNT, height, DMatrix);
+
+	//printf("NONCE[%u] TARGET %08x Hashimoto(%u, %u) -> %08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x\n", gid, target, DAG_ITEM_COUNT*32, height, block[0], block[1], block[2], block[3], block[4], block[5], block[6], block[7]);
 
 	// Check target
 	//ulong* out_long = &block[0];
@@ -1511,7 +1513,7 @@ __kernel void search_hash(
 	__constant uint const* g_header,
 	__global uint const* g_dag,
 	__global ulong4* g_lyre_nodes,
-	const ulong DAG_SIZE,
+	const ulong DAG_ITEM_COUNT,
 	const uint height
 	)
 {
@@ -1519,7 +1521,7 @@ __kernel void search_hash(
 	const uint hash_output_idx = gid - get_global_offset(0);
 	__global ulong4 *DMatrix = (__global ulong4 *)(g_lyre_nodes + (4 * memshift * 4 * 4 * 8 * (hash_output_idx % MAX_GLOBAL_THREADS)));
 
-	//printf("Search nonce %u (hash id %u) DAG_SIZE %u, height %u\n", gid, hash_output_idx, DAG_SIZE, height);
+	//printf("Search nonce %u (hash id %u) DAG_ITEM_COUNT %u, height %u\n", gid, hash_output_idx, DAG_ITEM_COUNT, height);
 
 	// set block
 	uint block[20];
@@ -1549,8 +1551,14 @@ __kernel void search_hash(
 		block[i] = sph_bswap32(block[i]);
 	}
 
+	//printf("NONCE[%u] HEADER == %08x,%08x,%08x,%08x,%08x,%08x,%08x\n", gid, 
+	//	block[0], block[1], block[2], block[3], block[4], block[5], block[6], block[7]);
+
 	// Run hashimoto (result hash output to block)
-	hashimoto(block, g_dag, DAG_SIZE, height, DMatrix);
+	hashimoto(block, g_dag, DAG_ITEM_COUNT, height, DMatrix);
+
+	//printf("NONCE[%u] Hashimoto(%u, %u) -> %08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x\n", gid, DAG_ITEM_COUNT*32, height, block[0], block[1], block[2], block[3], block[4], block[5], block[6], block[7]);
+    
 
 	g_output[hash_output_idx].h4[0] = block[0];
 	g_output[hash_output_idx].h4[1] = block[1];

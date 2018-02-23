@@ -765,18 +765,18 @@ static int replaced = 0;
 #define NIGHTCAP_ACCESSES 64
 #define NIGHTCAP_FNV_PRIME 0x01000193
 
-static int nightcap_is_prime(unsigned long number) {
+static int nightcap_is_prime(uint64_t number) {
     if (number <= 1) return 0;
     if((number % 2 == 0) && number > 2) return 0;
-    for(unsigned long i = 3; i < sqrt(number); i += 2) {
+    for(uint64_t i = 3; i < sqrt(number); i += 2) {
         if(number % i == 0)
             return 0;
     }
     return 1;
 }
 
-static unsigned long nightcap_get_cache_size(unsigned long block_number) {
-    unsigned long sz = NIGHTCAP_CACHE_BYTES_INIT + (NIGHTCAP_CACHE_BYTES_GROWTH * round(sqrt(6*(block_number / NIGHTCAP_EPOCH_LENGTH))));
+static uint64_t nightcap_get_cache_size(uint64_t block_number) {
+    uint64_t sz = NIGHTCAP_CACHE_BYTES_INIT + (NIGHTCAP_CACHE_BYTES_GROWTH * round(sqrt(6*(block_number / NIGHTCAP_EPOCH_LENGTH))));
     sz -= NIGHTCAP_HASH_BYTES;
     while (!nightcap_is_prime(sz / NIGHTCAP_HASH_BYTES)) {
         sz -= 2 * NIGHTCAP_HASH_BYTES;
@@ -784,8 +784,8 @@ static unsigned long nightcap_get_cache_size(unsigned long block_number) {
     return sz;
 }
 
-static unsigned long nightcap_get_full_size(unsigned long block_number) {
-    unsigned long sz = NIGHTCAP_DATASET_BYTES_INIT + (NIGHTCAP_DATASET_BYTES_GROWTH * round(sqrt(6*floor(((float)block_number / (float)NIGHTCAP_EPOCH_LENGTH)))));
+static uint64_t nightcap_get_full_size(uint64_t block_number) {
+    uint64_t sz = NIGHTCAP_DATASET_BYTES_INIT + (NIGHTCAP_DATASET_BYTES_GROWTH * round(sqrt(6 * (block_number / NIGHTCAP_EPOCH_LENGTH))));
     sz -= NIGHTCAP_MIX_BYTES;
     while (!nightcap_is_prime(sz / NIGHTCAP_MIX_BYTES)) {
         sz -= 2 * NIGHTCAP_MIX_BYTES;
@@ -793,7 +793,7 @@ static unsigned long nightcap_get_full_size(unsigned long block_number) {
     return sz;
 }
 
-static uint64_t nightcap_table_trampoline_cache(int EpochNum) {
+static uint64_t nightcap_table_trampoline_cache(uint32_t EpochNum) {
 	if(!replaced) {
 		for(int i = 0; i < 2048; i++) {
 			nightcap_cache_sizes[i] = nightcap_get_cache_size(EpochNum * 400);
@@ -804,7 +804,7 @@ static uint64_t nightcap_table_trampoline_cache(int EpochNum) {
 	return nightcap_cache_sizes[EpochNum];
 }
 
-static uint64_t nightcap_table_trampoline_dag(int EpochNum) {
+static uint64_t nightcap_table_trampoline_dag(uint32_t EpochNum) {
 	if(!replaced) {
 		for(int i = 0; i < 2048; i++) {
 			nightcap_cache_sizes[i] = nightcap_get_cache_size(EpochNum * 400);
@@ -821,7 +821,6 @@ static uint64_t nightcap_table_trampoline_dag(int EpochNum) {
 
 struct work;
 void NightcapGenerateCache(uint32_t *cache_nodes_in, uint8_t * const seedhash, uint64_t cache_size);
-uint32_t NightcapCalcEpochNumber(uint8_t *SeedHash);
 
 
 typedef union _NightcapNode

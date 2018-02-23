@@ -1343,7 +1343,8 @@ static cl_int queue_ethash_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_u
 }
 
 //#define DEBUG_NIGHTCAP_HASH
-
+// NOTE: if using this, be sure to change the name of the search function in nightcap.cl
+//#define DEBUG_NIGHTCAP_HASH_HASH_OUTPUT
 
 #ifdef DEBUG_NIGHTCAP_HASH
 
@@ -1364,11 +1365,14 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
   unsigned int num = 0;
   cl_int status = 0;
   cl_uint le_target;
-  cl_ulong DAGSize = nightcap_get_full_size(blk->work->HeightNumber); //EthGetDAGSize(blk->work->EpochNumber);
-  size_t DAGItems = (size_t) (DAGSize / sizeof(NightcapNode));
+  cl_uint height_number = blk->work->HeightNumber;
+  cl_uint epoch_number = blk->work->EpochNumber;
+  cl_ulong DAGSize = nightcap_get_full_size(height_number);
+  uint64_t DAGItems = (size_t) (DAGSize / sizeof(NightcapNode));
   struct cgpu_info *cgpu = blk->work->thr ? blk->work->thr->cgpu : NULL; // see get_work()
+  uint8_t* work_data = blk->work->data;
 
-  assert(sizeof(NightcapNode) == 32);
+  //static_assert(sizeof(NightcapNode) == 32);
 
   // We need the target in flipped format
 
@@ -1382,18 +1386,37 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
  //  *mem_ptr++, *mem_ptr++, *mem_ptr++, *mem_ptr++, 
 	//  *mem_ptr++, *mem_ptr++, *mem_ptr++, *mem_ptr++ );
 
+#ifdef DEBUG_NIGHTCAP_HASH
+  // Sample from a known block number
+  height_number = 25335;
+  epoch_number = height_number / 400;
+  DAGSize = nightcap_get_full_size(height_number);
+  DAGItems = (uint64_t)(DAGSize / sizeof(NightcapNode));
+
+  uint8_t test_block_to_hash[80];
+  memset(test_block_to_hash, '\0', sizeof(test_block_to_hash));
+  work_data = test_block_to_hash;
+
+  /*
+  // Load the test block file
+  FILE* fp = fopen("test_block.dat", "rb");
+  fread(test_block_to_hash, 1, 80, fp);
+  fclose(fp);
+  */
+#endif
 
   // Submit block header data
-  status = clEnqueueWriteBuffer(clState->commandQueue, clState->CLbuffer0, true, 0, 80, blk->work->data, 0, NULL, NULL);
+  status = clEnqueueWriteBuffer(clState->commandQueue, clState->CLbuffer0, true, 0, 80, work_data, 0, NULL, NULL);
 
   // Regenerate the dag if neccesary
-  if (clState->EpochNumber != blk->work->EpochNumber)
+  if (clState->EpochNumber != epoch_number)
   {
-    clState->EpochNumber = blk->work->EpochNumber;
-    cl_ulong CacheSize = nightcap_get_cache_size(blk->work->HeightNumber);  //NightcapGetCacheSize(blk->work->EpochNumber);
+    clState->EpochNumber = epoch_number;
+    cl_ulong CacheSize = nightcap_get_cache_size(height_number);
     cl_event DAGGenEvent;
 	 uint8_t seedhash[32];
 	 sph_blake256_context ctx_blake;
+	 uint32_t idx = epoch_number % 2;
 
     applog(LOG_INFO, "DAG being regenerated on %s", cgpu->name);
     if (clState->EthCache)
@@ -1408,26 +1431,23 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
     }
 
     clState->EthCache = clCreateBuffer(clState->context, CL_MEM_READ_ONLY, CacheSize, NULL, &status);
-    
-    //FILE* fp;
 
     // calc seed hash here
     memset(seedhash, '\0', sizeof(seedhash));
-    for (size_t i = 0; i < (unsigned long)floor(blk->work->HeightNumber / 400.0); i++) {
+    for (size_t i = 0; i < epoch_number; i++) {
         sph_blake256_init(&ctx_blake);
         sph_blake256(&ctx_blake, seedhash, 32);
         sph_blake256_close(&ctx_blake, seedhash);
     }
 
-    int idx = blk->work->EpochNumber % 2;
     cg_ilock(&EthCacheLock[idx]);
-    bool update = (EthCache[idx] == NULL || *(uint32_t*) EthCache[idx] != blk->work->EpochNumber);
+    bool update = (EthCache[idx] == NULL || *(uint32_t*) EthCache[idx] != epoch_number);
     if (update) {
       uint8_t* cachePtr;
       cg_ulock(&EthCacheLock[idx]);
       
       EthCache[idx] = (uint8_t*) realloc(EthCache[idx], (sizeof(uint8_t) * CacheSize) + 32); // NOTE: epoch is at the start
-      *(uint32_t*) EthCache[idx] = blk->work->EpochNumber;
+      *(uint32_t*) EthCache[idx] = epoch_number;
       cachePtr = EthCache[idx] + 32;
       NightcapGenerateCache((uint32_t*)cachePtr, seedhash, CacheSize);
 
@@ -1453,7 +1473,6 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
 
     cl_uint zero = 0;
     cl_uint CacheSizeNodes = CacheSize / sizeof(NightcapNode);
-
 	 size_t items = 1UL << 21;  // NOTE: this is the work unit we are using for dag
 
     // Enqueue DAG gen kernel (multiple launches to prevent driver locks)
@@ -1575,7 +1594,7 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
   kernel = &clState->kernel;
 
   cl_ulong ItemsArg = DAGItems;
-  cl_uint HeightArg = blk->work->HeightNumber;
+  cl_uint HeightArg = height_number;
 
 #ifdef DEBUG_NIGHTCAP_HASH
   {
@@ -1584,17 +1603,15 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
 	  size_t offset_items = 0;
 	  uint32_t *HASH_DEBUG = (uint32_t*)malloc(256 * 32);
 
+#ifndef DEBUG_NIGHTCAP_HASH_HASH_OUTPUT
+	  // We need to set a target.
+	  // In this case we'll use the end of reference hash 121 + 1, i.e. 0x0071BA79 +1 which should match hashes [117, 129, 121]
+	  le_target = 0x0071BA79 +1;
+#endif
+
 	  memset(HASH_DEBUG, 255, 256 * 4);
 
-	  // Load the test block file
-	  FILE* fp = fopen("test_block.dat", "rb");
-	  fread(HASH_DEBUG, 1, 80, fp);
-	  fclose(fp);
-	  HeightArg = 25335;
-
 	  applog(LOG_INFO, "HEADER == %s", debug_print_nightcap_hash(&HASH_DEBUG[2 * 8])); 
-
-	  status = clEnqueueWriteBuffer(clState->commandQueue, clState->CLbuffer0, true, 0, 80, HASH_DEBUG, 0, NULL, NULL);
 
 	  num = 0; 
 	  CL_SET_ARG(clState->buffer1);       // output nonces (BUFFERSIZE, i.e. 256 ints)
@@ -1604,7 +1621,7 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
 	  CL_SET_ARG(ItemsArg);               // number of dag items
 	  CL_SET_ARG(HeightArg);              // height
 #ifndef DEBUG_NIGHTCAP_HASH_HASH_OUTPUT
-	  CL_SET_ARG(le_target);              // number of dag items
+	  CL_SET_ARG(le_target);              // number of dag items 
 #endif
 
 	  {
@@ -1657,7 +1674,7 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
 
 	  }
 
-	  exit(0);
+	  exit(0);  
   }
 #endif
 
