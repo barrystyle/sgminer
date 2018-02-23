@@ -89,8 +89,8 @@ static void lyra2re2_hash(const void* input, void* state, int length)
 	memcpy(state, hashA, 32);
 }
 
-
-static struct CHashimotoResult hashimoto(uint8_t *blockToHash, uint32_t *dag, unsigned full_size, int height) {
+static struct CHashimotoResult hashimoto(const uint8_t *blockToHash, const uint32_t *dag, uint64_t full_size, uint32_t height)
+{
 	uint64_t n = full_size / HASH_BYTES;
 	uint64_t mixhashes = MIX_BYTES / HASH_BYTES;
 	uint64_t wordhashes = MIX_BYTES / WORD_BYTES;
@@ -107,7 +107,7 @@ static struct CHashimotoResult hashimoto(uint8_t *blockToHash, uint32_t *dag, un
 		uint32_t newdata[MIX_BYTES / sizeof(uint32_t)];
 		for (int j = 0; j < mixhashes; j++) {
 			uint64_t pj = (p + j) * 8;
-			uint32_t* item = dag + pj;
+			const uint32_t* item = dag + pj;
 			memcpy(newdata + (j * 8), item, HASH_BYTES);
 		}
 		for (int i = 0; i < MIX_BYTES / sizeof(uint32_t); i++) {
@@ -129,12 +129,83 @@ static struct CHashimotoResult hashimoto(uint8_t *blockToHash, uint32_t *dag, un
 
 }
 
+// Calc node on fly
+void my_calc_dataset_item(const uint32_t *cache, uint64_t i, uint64_t cache_size, uint32_t *out_mix)
+{
+	sph_blake256_context ctx;
+	uint64_t items = cache_size / HASH_BYTES;
+	uint64_t hashwords = HASH_BYTES / WORD_BYTES;
+	memcpy(out_mix, cache + ((i % items) * (HASH_BYTES / sizeof(uint32_t))), HASH_BYTES);
+	out_mix[0] ^= i;
+
+	sph_blake256_init(&ctx);
+	sph_blake256(&ctx, out_mix, HASH_BYTES);
+	sph_blake256_close(&ctx, out_mix);
+
+	for (uint64_t parent = 0; parent < DATASET_PARENTS; parent++) {
+		uint64_t index = fnv(i ^ parent, out_mix[parent % (HASH_BYTES / sizeof(uint32_t))]) % items;
+		for (uint64_t dword = 0; dword < (HASH_BYTES / sizeof(uint32_t)); dword++) {
+			out_mix[dword] = fnv(out_mix[dword], cache[index * (HASH_BYTES / sizeof(uint32_t))]);
+		}
+	}
+
+	sph_blake256_init(&ctx);
+	sph_blake256(&ctx, out_mix, HASH_BYTES);
+	sph_blake256_close(&ctx, out_mix);
+}
+
+// Same as hashimoto except it doesn't use the dag
+static struct CHashimotoResult light_hashimoto(const uint8_t *blockToHash, const uint32_t *cache, uint64_t cache_size, uint64_t full_size, uint32_t height)
+{
+	//assert(cache_size == get_cache_size(height));
+
+	const uint64_t n = full_size / HASH_BYTES;
+	const uint64_t mixhashes = MIX_BYTES / HASH_BYTES;
+	const uint64_t wordhashes = MIX_BYTES / WORD_BYTES;
+	uint32_t hashedHeader[8];
+	uint32_t mix[MIX_BYTES / sizeof(uint32_t)];
+	uint32_t cmix[4];
+	lyra2re2_hash(blockToHash, (char*)hashedHeader, 80);
+	for (uint64_t i = 0; i < mixhashes; i++) {
+		memcpy(mix + (i * (HASH_BYTES / sizeof(uint32_t))), hashedHeader, HASH_BYTES);
+	}
+	for (uint64_t i = 0; i < ACCESSES; i++) {
+		uint32_t target = fnv(i ^ hashedHeader[0], mix[i % (MIX_BYTES / sizeof(uint32_t))]) % (n / mixhashes) * mixhashes;
+		uint32_t mapdata[MIX_BYTES / sizeof(uint32_t)];
+		for (uint64_t mixhash = 0; mixhash < mixhashes; mixhash++) {
+			//CDAGNode node = GetNode(target + mixhash, header.height);
+			//assert((mixhash * (HASH_BYTES / sizeof(uint32_t))) < 16);
+
+			uint32_t node[HASH_BYTES / sizeof(uint32_t)];
+			my_calc_dataset_item(cache, target + mixhash, cache_size, node);
+			memcpy(mapdata + (mixhash * (HASH_BYTES / sizeof(uint32_t))), node, HASH_BYTES);
+		}
+		for (uint64_t dword = 0; dword < (MIX_BYTES / sizeof(uint32_t)); dword++) {
+			mix[dword] = fnv(mix[dword], mapdata[dword]);
+			//assert(dword < sizeof(mix));
+		}
+	}
+	for (uint64_t i = 0; i < MIX_BYTES / sizeof(uint32_t); i += sizeof(uint32_t)) {
+		cmix[i / sizeof(uint32_t)] = fnv(fnv(fnv(mix[i], mix[i + 1]), mix[i + 2]), mix[i + 3]);
+	}
+
+	struct CHashimotoResult result;
+	memcpy(result.cmix, cmix, MIX_BYTES / 4);
+	uint8_t hash[52];
+	memcpy(hash, hashedHeader, 32);
+	memcpy(hash + 32, &height, 4);
+	memcpy(hash + 36, cmix, 16);
+	lyra2re2_hash((char *)hash, (char *)result.result, 52);
+	return result;
+}
+
 void nightcap_regenhash(struct work *work)
 {
 	int idx = work->EpochNumber % 2;
 	uint32_t *pdata = (uint32_t*)(work->data);
 	uint32_t nonce = pdata[19];
 	uint32_t endiandata[20];
+	unsigned long cache_size = nightcap_get_cache_size(work->HeightNumber);
 	unsigned long full_size = nightcap_get_full_size(work->HeightNumber);
 
 	for (int i = 0; i < 20; i++) {
@@ -145,7 +216,7 @@ void nightcap_regenhash(struct work *work)
 
 	cg_rlock(&EthCacheLock[idx]);
 
-	struct CHashimotoResult res = hashimoto((uint8_t*)endiandata, (uint32_t*)(EthCache[idx] + 32), full_size, work->HeightNumber);
+	struct CHashimotoResult res = light_hashimoto((uint8_t*)endiandata, (uint32_t*)(EthCache[idx] + 32), cache_size, full_size, work->HeightNumber);
 
 	cg_runlock(&EthCacheLock[idx]);
 

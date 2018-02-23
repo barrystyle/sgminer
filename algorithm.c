@@ -1569,17 +1569,6 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
     }
     applog(LOG_NOTICE, "DAG ready on %s (%u MB)", cgpu->name, (unsigned) (DAGSize >> 20));
     //exit(0); // DEBUG
-
-
-	 // Remove cache
-	 if (clState->EthCache) {
-		 status |= clReleaseMemObject(clState->EthCache);
-		 clState->EthCache = NULL;
-		 if (status != CL_SUCCESS) {
-			 applog(LOG_ERR, "Error %d: Freeing eth cache.", status);
-			 return(status);
-		 }
-	 }
   }
 
   num = 0;
