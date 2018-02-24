@@ -1613,8 +1613,6 @@ static cl_int queue_nightcap_kernel(_clState *clState, dev_blk_ctx *blk, __maybe
 
     memset(HASH_DEBUG, 255, 256 * 4);
 
-    applog(LOG_INFO, "HEADER == %s", debug_print_nightcap_hash(&HASH_DEBUG[2 * 8]));
-
     num = 0;
     CL_SET_ARG(clState->buffer1);       // output nonces (BUFFERSIZE, i.e. 256 ints)
     CL_SET_ARG(clState->CLbuffer0);     // input block header

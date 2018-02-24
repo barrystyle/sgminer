@@ -1022,7 +1022,7 @@ void reduceDuplexRowSetupf(uint rowIn, uint rowInOut, uint rowOut, ulong4 *state
 // Hash helper functions
 
 // blake80, in(80 bytes), out(32 bytes)
-void blake80(const uint* input_words, uint* out_words)
+void blake80_noswap(const uint* input_words, uint* out_words)
 {;
 	//printf("INPUT WORDS[1]: %s\n", debug_print_hash((uint*)(input_words)));
 	//printf("INPUT WORDS[2]: %s\n", debug_print_hash((uint*)((uint8_t*)(input_words) + (52 - 32))));
@@ -1038,7 +1038,7 @@ void blake80(const uint* input_words, uint* out_words)
 
 	//printf("blake32 full step T0=0x%x T1=0x%x H=[%x,%x,%x,%x,%x,%x,%x,%x] S=[%x,%x,%x,%x]\n", T0, T1, H0, H1, H2, H3, H4, H5, H6, H7, S0, S1, S2, S3);
 
-	BLAKE256_COMPRESS32(sph_bswap32(input_words[0]),sph_bswap32(input_words[1]),sph_bswap32(input_words[2]),sph_bswap32(input_words[3]),sph_bswap32(input_words[4]),sph_bswap32(input_words[5]),sph_bswap32(input_words[6]),sph_bswap32(input_words[7]),sph_bswap32(input_words[8]),sph_bswap32(input_words[9]),sph_bswap32(input_words[10]),sph_bswap32(input_words[11]),sph_bswap32(input_words[12]),sph_bswap32(input_words[13]),sph_bswap32(input_words[14]),sph_bswap32(input_words[15]));
+	BLAKE256_COMPRESS32((input_words[0]),(input_words[1]),(input_words[2]),(input_words[3]),(input_words[4]),(input_words[5]),(input_words[6]),(input_words[7]),(input_words[8]),(input_words[9]),(input_words[10]),(input_words[11]),(input_words[12]),(input_words[13]),(input_words[14]),(input_words[15]));
 	
 	//printf("blake32 after step T0=0x%x T1=0x%x H=[%x,%x,%x,%x,%x,%x,%x,%x] S=[%x,%x,%x,%x]\n", T0, T1, H0, H1, H2, H3, H4, H5, H6, H7, S0, S1, S2, S3);
 
@@ -1048,7 +1048,7 @@ void blake80(const uint* input_words, uint* out_words)
 
 	//printf("blake32 full step T0=0x%x T1=0x%x H=[%x,%x,%x,%x,%x,%x,%x,%x] S=[%x,%x,%x,%x]\n", T0, T1, H0, H1, H2, H3, H4, H5, H6, H7, S0, S1, S2, S3);
 
-	BLAKE256_COMPRESS32(sph_bswap32(input_words[16]),sph_bswap32(input_words[17]),sph_bswap32(input_words[18]),sph_bswap32(input_words[19]),2147483648,0,0,0,0,0,0,0,0,1,0,640);
+	BLAKE256_COMPRESS32((input_words[16]),(input_words[17]),(input_words[18]),(input_words[19]),2147483648,0,0,0,0,0,0,0,0,1,0,640);
 	// output to BLAKE_OUT_HASH
 	out_words[0] = sph_bswap32(H0);
 	out_words[1] = sph_bswap32(H1);
@@ -1328,11 +1328,11 @@ void lyra2(const ulong* in_dwords, ulong* out_dwords,__global ulong4* DMatrix)
 
 
 // lyra2re252, in(80 bytes), out(32 bytes)
-void lyra2re2_hash80(const uint* blockToHash, uint* hashedHeader, __global ulong4* nodes)
+void lyra2re2_hash80_noswap(const uint* blockToHash, uint* hashedHeader, __global ulong4* nodes)
 {
 	uint hashB[8];
 
-    blake80(blockToHash, hashedHeader);
+    blake80_noswap(blockToHash, hashedHeader);
     keccak32((ulong*)hashedHeader, (ulong*)hashB);
     cubehash32(hashB, hashedHeader);
     lyra2((ulong*)hashedHeader, (ulong*)hashB, nodes);
@@ -1368,7 +1368,7 @@ void hashimoto(uint *blockToHash, __global const uint *dag, const ulong n, const
 
     //uint nonce = sph_bswap32(blockToHash[19]);
 	
-	lyra2re2_hash80(blockToHash,blockToHash, nodes);
+	lyra2re2_hash80_noswap(blockToHash,blockToHash, nodes);
 
     //printf("nonce(%u) -> %08x%08x%08x%08x%08x%08x%08x%08x\n", nonce_debug, blockToHash[0], blockToHash[1], blockToHash[2], blockToHash[3], blockToHash[4], blockToHash[5], blockToHash[6], blockToHash[7]);
 
@@ -1419,17 +1419,10 @@ void hashimoto(uint *blockToHash, __global const uint *dag, const ulong n, const
     lyra2re2_hash52(blockToHash, blockToHash, nodes);
 }
 
+// Set to enable hash testing kernel variant
+//#define TEST_KERNEL_HASH
 
-bool lltest(const uint *hash, const ulong target)
-{
-	int i;
-	bool rc = true;
-	
-	return false; // TODO
-
-	return rc;
-}
-
+#ifndef TEST_KERNEL_HASH
 
 __attribute__((reqd_work_group_size(WORKSIZE, 1, 1)))
 __kernel void search(
@@ -1473,11 +1466,6 @@ __kernel void search(
 	block[18] = g_header[18];
 	block[19] = gid;
 
-	// TODO: remove the need for this (i.e. initial byteswap can be avoided)
-	for (int i=0; i<20; i++) {
-		block[i] = sph_bswap32(block[i]);
-	}
-
 	// Run hashimoto (result hash output to block)
 	hashimoto(block, g_dag, DAG_ITEM_COUNT, height, DMatrix);
 
@@ -1507,8 +1495,10 @@ __kernel void search(
 #endif
 }
 
+#else
+
 __attribute__((reqd_work_group_size(WORKSIZE, 1, 1)))
-__kernel void search_hash(
+__kernel void search(
 	__global volatile hash32_t* restrict g_output,
 	__constant uint const* g_header,
 	__global uint const* g_dag,
@@ -1546,11 +1536,6 @@ __kernel void search_hash(
 	block[18] = g_header[18];
 	block[19] = gid;
 
-	// TODO: remove the need for this (i.e. initial byteswap can be avoided)
-	for (int i=0; i<20; i++) {
-		block[i] = sph_bswap32(block[i]);
-	}
-
 	//printf("NONCE[%u] HEADER == %08x,%08x,%08x,%08x,%08x,%08x,%08x\n", gid, 
 	//	block[0], block[1], block[2], block[3], block[4], block[5], block[6], block[7]);
 
@@ -1569,6 +1554,8 @@ __kernel void search_hash(
 	g_output[hash_output_idx].h4[6] = block[6];
 	g_output[hash_output_idx].h4[7] = block[7];
 }
+
+#endif
 
 __kernel void GenerateDAG(uint start, __global const uint16 *_Cache, __global uint16 *_DAG, uint LIGHT_SIZE)
 {
