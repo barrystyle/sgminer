@@ -434,7 +434,7 @@ p6 += p7; p7 = SPH_ROTL64(p7, ROT256[ROT][3]);  p7 ^= p6; \
 #define rs7(x) SPH_ROTL32((x), 27)
 
 /* Message expansion function 1 */
-uint expand32_1(int i, uint *M32, uint *H, uint *Q)
+uint expand32_1(int i, const uint *M32, const uint *H, const uint *Q)
 {
 
 	return (ss1(Q[i - 16]) + ss2(Q[i - 15]) + ss3(Q[i - 14]) + ss0(Q[i - 13])
@@ -446,7 +446,7 @@ uint expand32_1(int i, uint *M32, uint *H, uint *Q)
 }
 
 /* Message expansion function 2 */
-uint expand32_2(int i, uint *M32, uint *H, uint *Q)
+uint expand32_2(int i, const uint *M32, const uint *H, const uint *Q)
 {
 
 	return (Q[i - 16] + rs1(Q[i - 15]) + Q[i - 14] + rs2(Q[i - 13])
@@ -457,9 +457,8 @@ uint expand32_2(int i, uint *M32, uint *H, uint *Q)
 
 }
 
-void Compression256(uint *M32, uint *H)
+void Compression256(const uint *M32, uint *H)
 {
-
 	int i;
 	uint XL32, XH32, Q[32];
 
