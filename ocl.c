@@ -773,6 +773,8 @@ _clState *initCl(unsigned int gpu, char *name, size_t nameSize, algorithm_t *alg
   }
 
   strcat(build_data->binary_filename, ".bin");
+  for(int i = 0; i<strlen(build_data->binary_filename); i++)
+    if(build_data->binary_filename[i] == ' ') build_data->binary_filename[i] = '_';
   applog(LOG_DEBUG, "Using binary file %s", build_data->binary_filename);
 
   // Load program from file or build it if it doesn't exist

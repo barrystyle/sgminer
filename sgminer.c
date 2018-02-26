@@ -100,7 +100,7 @@ bool opt_remoteconf_usecache = false; // use last downloaded copy of the config 
 int opt_cutofftemp = 95;
 int opt_log_interval = 5;
 int opt_queue = 1;
-int opt_scantime = 7;
+int opt_scantime = 30;
 int opt_expiry = 28;
 
 unsigned long long global_hashrate;
