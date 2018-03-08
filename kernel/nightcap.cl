@@ -969,6 +969,102 @@ __constant static const uint CUBEHASH_IV512[] = {
 
 #define SPH_ULONG4(a, b, c, d) (ulong4)(a, b, c, d)
 
+
+void reduceDuplexf(ulong4* state , __global ulong4* DMatrix)
+{
+
+	 ulong4 state1[3];
+	 uint ps1 = 0;
+	 uint ps2 = (memshift * 3 + memshift * 4);
+	 for (int i = 0; i < 4; i++)
+	 {
+		 uint s1 = ps1 + i*memshift;
+		 uint s2 = ps2 - i*memshift;
+		 for (int j = 0; j < 3; j++)  state1[j] = (DMatrix)[j + s1];
+		 for (int j = 0; j < 3; j++)  state[j] ^= state1[j];
+		 round_lyra(state);
+		 for (int j = 0; j < 3; j++)  state1[j] ^= state[j];
+		 for (int j = 0; j < 3; j++)  (DMatrix)[j + s2] = state1[j];
+	 }
+
+}
+
+void reduceDuplexRowf(uint rowIn,uint rowInOut,uint rowOut,ulong4 * state, __global ulong4 * DMatrix)
+{
+
+ulong4 state1[3], state2[3];
+uint ps1 = (memshift * 4 * rowIn);
+uint ps2 = (memshift * 4 * rowInOut);
+uint ps3 = (memshift * 4 * rowOut);
+
+  for (int i = 0; i < 4; i++)
+ {
+  uint s1 = ps1 + i*memshift;
+  uint s2 = ps2 + i*memshift;
+  uint s3 = ps3 + i*memshift;
+
+	 for (int j = 0; j < 3; j++)   state1[j] = (DMatrix)[j + s1];
+         for (int j = 0; j < 3; j++)   state2[j] = (DMatrix)[j + s2];
+         for (int j = 0; j < 3; j++)   state1[j] += state2[j];
+         for (int j = 0; j < 3; j++)   state[j] ^= state1[j];
+         round_lyra(state);
+         ((ulong*)state2)[0] ^= ((ulong*)state)[11];
+  for (int j = 0; j < 11; j++)
+	  ((ulong*)state2)[j + 1] ^= ((ulong*)state)[j];
+         if (rowInOut != rowOut) {
+			 for (int j = 0; j < 3; j++)
+				 (DMatrix)[j + s2] = state2[j];
+			 for (int j = 0; j < 3; j++)
+				 (DMatrix)[j + s3] ^= state[j];
+  		 }
+		 else {
+			 for (int j = 0; j < 3; j++)
+				 state2[j] ^= state[j];
+			 for (int j = 0; j < 3; j++)
+				 (DMatrix)[j + s2] = state2[j];
+		 }
+
+ }
+  }
+
+
+
+
+void reduceDuplexRowSetupf(uint rowIn, uint rowInOut, uint rowOut, ulong4 *state,  __global ulong4* DMatrix) {
+
+	 ulong4 state2[3], state1[3];
+	 uint ps1 = (memshift * 4 * rowIn);
+	 uint ps2 = (memshift * 4 * rowInOut);
+	 uint ps3 = (memshift * 3 + memshift * 4 * rowOut);
+
+	 for (int i = 0; i < 4; i++)
+	 {
+		 uint s1 = ps1 + i*memshift;
+		 uint s2 = ps2 + i*memshift;
+		 uint s3 = ps3 - i*memshift;
+
+		 for (int j = 0; j < 3; j++)  state1[j] = (DMatrix)[j + s1];
+
+		 for (int j = 0; j < 3; j++)  state2[j] = (DMatrix)[j + s2];
+		 for (int j = 0; j < 3; j++) {
+			 ulong4 tmp = state1[j] + state2[j];
+			 state[j] ^= tmp;
+		 		 }
+		 round_lyra(state);
+
+		 for (int j = 0; j < 3; j++) {
+			 state1[j] ^= state[j];
+			 (DMatrix)[j + s3] = state1[j];
+		 		 }
+
+		 ((ulong*)state2)[0] ^= ((ulong*)state)[11];
+		 for (int j = 0; j < 11; j++)
+			 ((ulong*)state2)[j + 1] ^= ((ulong*)state)[j];
+		 for (int j = 0; j < 3; j++)
+			 (DMatrix)[j + s2] = state2[j];
+	 }
+}
+
 // END LYRA2 PREPROCESSOR MACROS
 
 //
@@ -977,117 +1073,6 @@ __constant static const uint CUBEHASH_IV512[] = {
 
 
 //#define DEBUG
-
-
-// Hash helper functions
-
-// blake80, in(80 bytes), out(32 bytes)
-inline void blake80_noswap(const uint* input_words, uint* out_words)
-{
-	//printf("INPUT WORDS[1]: %s\n", debug_print_hash((uint*)(input_words)));
-	//printf("INPUT WORDS[2]: %s\n", debug_print_hash((uint*)((uint8_t*)(input_words) + (52 - 32))));
-	
-	// Blake256 vars
-	BLAKE256_STATE;
-	BLAKE256_COMPRESS32_STATE;
-
-	// Blake256 start hash
-	INIT_BLAKE256_STATE;
-	// Blake hash full input
-	T0 = SPH_T32(T0 + 512);
-
-	//printf("blake32 full step T0=0x%x T1=0x%x H=[%x,%x,%x,%x,%x,%x,%x,%x] S=[%x,%x,%x,%x]\n", T0, T1, H0, H1, H2, H3, H4, H5, H6, H7, S0, S1, S2, S3);
-
-	BLAKE256_COMPRESS_BEGIN((input_words[0]),(input_words[1]),(input_words[2]),(input_words[3]),(input_words[4]),(input_words[5]),(input_words[6]),(input_words[7]),(input_words[8]),(input_words[9]),(input_words[10]),(input_words[11]),(input_words[12]),(input_words[13]),(input_words[14]),(input_words[15]));
-#pragma unroll 
-	for (uint R = 0; R< BLAKE32_ROUNDS; R++) {
-		BLAKE256_GS_ALT(0, 4, 0x8, 0xC, 0x0);
-		BLAKE256_GS_ALT(1, 5, 0x9, 0xD, 0x2);
-		BLAKE256_GS_ALT(2, 6, 0xA, 0xE, 0x4);
-		BLAKE256_GS_ALT(3, 7, 0xB, 0xF, 0x6);
-		BLAKE256_GS_ALT(0, 5, 0xA, 0xF, 0x8);
-		BLAKE256_GS_ALT(1, 6, 0xB, 0xC, 0xA);
-		BLAKE256_GS_ALT(2, 7, 0x8, 0xD, 0xC);
-		BLAKE256_GS_ALT(3, 4, 0x9, 0xE, 0xE);
-	}
-	BLAKE256_COMPRESS_END;
-
-	//printf("blake32 after step T0=0x%x T1=0x%x H=[%x,%x,%x,%x,%x,%x,%x,%x] S=[%x,%x,%x,%x]\n", T0, T1, H0, H1, H2, H3, H4, H5, H6, H7, S0, S1, S2, S3);
-
-	// blake close - filled case
-	T0 -= 512 - 128; // i.e. 128
-	T0 = SPH_T32(T0 + 512);
-
-	//printf("blake32 full step T0=0x%x T1=0x%x H=[%x,%x,%x,%x,%x,%x,%x,%x] S=[%x,%x,%x,%x]\n", T0, T1, H0, H1, H2, H3, H4, H5, H6, H7, S0, S1, S2, S3);
-
-	BLAKE256_COMPRESS_BEGIN((input_words[16]),(input_words[17]),(input_words[18]),(input_words[19]),2147483648,0,0,0,0,0,0,0,0,1,0,640);
-#pragma unroll 
-	for (uint R = 0; R< BLAKE32_ROUNDS; R++) {
-		BLAKE256_GS_ALT(0, 4, 0x8, 0xC, 0x0);
-		BLAKE256_GS_ALT(1, 5, 0x9, 0xD, 0x2);
-		BLAKE256_GS_ALT(2, 6, 0xA, 0xE, 0x4);
-		BLAKE256_GS_ALT(3, 7, 0xB, 0xF, 0x6);
-		BLAKE256_GS_ALT(0, 5, 0xA, 0xF, 0x8);
-		BLAKE256_GS_ALT(1, 6, 0xB, 0xC, 0xA);
-		BLAKE256_GS_ALT(2, 7, 0x8, 0xD, 0xC);
-		BLAKE256_GS_ALT(3, 4, 0x9, 0xE, 0xE);
-	}
-	BLAKE256_COMPRESS_END;
-
-	// output to BLAKE_OUT_HASH
-	out_words[0] = sph_bswap32(H0);
-	out_words[1] = sph_bswap32(H1);
-	out_words[2] = sph_bswap32(H2);
-	out_words[3] = sph_bswap32(H3);
-	out_words[4] = sph_bswap32(H4);
-	out_words[5] = sph_bswap32(H5);
-	out_words[6] = sph_bswap32(H6);
-	out_words[7] = sph_bswap32(H7);
-}
-
-// blake80, in(52 bytes), out(32 bytes)
-inline void blake52(const uint* input_words, uint* out_words)
-{
-	// Blake256 vars
-	BLAKE256_STATE;
-	BLAKE256_COMPRESS32_STATE;
-
-	// Blake256 start hash
-	INIT_BLAKE256_STATE;
-	// Blake hash full input
-	// blake close - t0==0 case
-	T0 = SPH_C32(0xFFFFFE00) + 416;
-	T1 = SPH_C32(0xFFFFFFFF);
-	T0 = SPH_T32(T0 + 512);
-	T1 = SPH_T32(T1 + 1);
-
-	//printf("blake32 full step T0=0x%x T1=0x%x H=[%x,%x,%x,%x,%x,%x,%x,%x] S=[%x,%x,%x,%x]\n", T0, T1, H0, H1, H2, H3, H4, H5, H6, H7, S0, S1, S2, S3);
-
-	BLAKE256_COMPRESS_BEGIN(sph_bswap32(input_words[0]),sph_bswap32(input_words[1]),sph_bswap32(input_words[2]),sph_bswap32(input_words[3]),sph_bswap32(input_words[4]),sph_bswap32(input_words[5]),sph_bswap32(input_words[6]),sph_bswap32(input_words[7]),sph_bswap32(input_words[8]),sph_bswap32(input_words[9]),sph_bswap32(input_words[10]),sph_bswap32(input_words[11]),sph_bswap32(input_words[12]),2147483649,0,416);
-#pragma unroll 
-	for (uint R = 0; R< BLAKE32_ROUNDS; R++) {
-		BLAKE256_GS_ALT(0, 4, 0x8, 0xC, 0x0);
-		BLAKE256_GS_ALT(1, 5, 0x9, 0xD, 0x2);
-		BLAKE256_GS_ALT(2, 6, 0xA, 0xE, 0x4);
-		BLAKE256_GS_ALT(3, 7, 0xB, 0xF, 0x6);
-		BLAKE256_GS_ALT(0, 5, 0xA, 0xF, 0x8);
-		BLAKE256_GS_ALT(1, 6, 0xB, 0xC, 0xA);
-		BLAKE256_GS_ALT(2, 7, 0x8, 0xD, 0xC);
-		BLAKE256_GS_ALT(3, 4, 0x9, 0xE, 0xE);
-	}
-	BLAKE256_COMPRESS_END;
-
-	//printf("blake32 final step T0=0x%x T1=0x%x H=[%x,%x,%x,%x,%x,%x,%x,%x] S=[%x,%x,%x,%x]\n", T0, T1, H0, H1, H2, H3, H4, H5, H6, H7, S0, S1, S2, S3);
-
-	out_words[0] = sph_bswap32(H0);
-	out_words[1] = sph_bswap32(H1);
-	out_words[2] = sph_bswap32(H2);
-	out_words[3] = sph_bswap32(H3);
-	out_words[4] = sph_bswap32(H4);
-	out_words[5] = sph_bswap32(H5);
-	out_words[6] = sph_bswap32(H6);
-	out_words[7] = sph_bswap32(H7);
-}
 
 
 // skein32, in(32 bytes), out(32 bytes)
@@ -1170,103 +1155,17 @@ void skein32(const ulong* in_dwords, ulong* out_dwords)
 void keccak32(const ulong* input_dwords, ulong* output_dwords)
 {
 	ulong keccak_gpu_state[25];
-
-        // unrolling results in 37 lines of asm (instead of 26)
-        #pragma nounroll
-	for (int i = 0; i<25; i++) {
-            keccak_gpu_state[i] = 0;  // saves 2 lines of asm
-            if (i<4) { keccak_gpu_state[i] = input_dwords[i]; }
-        }
-	keccak_gpu_state[4] = 0x0000000000000001;
-	keccak_gpu_state[16] = 0x8000000000000000;
-        keccak_block((ulong*)&keccak_gpu_state[0]);
-        output_dwords[0] = keccak_gpu_state[0];
-        output_dwords[1] = keccak_gpu_state[1];
-        output_dwords[2] = keccak_gpu_state[2];
-        output_dwords[3] = keccak_gpu_state[3];
-}
-
-// bmw32, in(32 bytes), out(32 bytes)
-void bmw32(const uint* in_words, uint* out_words)
-{
-	//printf("bmw32 in bytes=%s\n", debug_print_hash(in_hash));
-
-	uint dh[16] = {
-		0x40414243, 0x44454647,
-		0x48494A4B, 0x4C4D4E4F,
-		0x50515253, 0x54555657,
-		0x58595A5B, 0x5C5D5E5F,
-		0x60616263, 0x64656667,
-		0x68696A6B, 0x6C6D6E6F,
-		0x70717273, 0x74757677,
-		0x78797A7B, 0x7C7D7E7F
-	};
-	uint final_s[16] = {
-		0xaaaaaaa0, 0xaaaaaaa1, 0xaaaaaaa2,
-		0xaaaaaaa3, 0xaaaaaaa4, 0xaaaaaaa5,
-		0xaaaaaaa6, 0xaaaaaaa7, 0xaaaaaaa8,
-		0xaaaaaaa9, 0xaaaaaaaa, 0xaaaaaaab,
-		0xaaaaaaac, 0xaaaaaaad, 0xaaaaaaae,
-		0xaaaaaaaf
-	};
-
-	uint message[16];
-	for (int i = 0; i<8; i++) message[i] = (in_words[i]);
-	for (int i = 9; i<14; i++) message[i] = 0;
-	message[8]= 0x80;
-	message[14]=0x100;
-	message[15]=0;
-
-	Compression256(message, dh);
-	Compression256(dh, final_s);
-
-	#pragma unroll
-	for (int i=8; i<16; i++) {
-		out_words[i-8] = (final_s[i]);
+        keccak_gpu_state[0] = input_dwords[0];
+        keccak_gpu_state[1] = input_dwords[1];
+        keccak_gpu_state[2] = input_dwords[2];
+        keccak_gpu_state[3] = input_dwords[3];
+	for (int i = 5; i<25; i++) {
+            keccak_gpu_state[i] = 0;
 	}
-}
-
-// cubehash32, in(32 bytes), out(32 bytes)
-void cubehash32(const uint* in_words, uint* out_words)
-{
-	uint x0 = 0xEA2BD4B4; uint x1 = 0xCCD6F29F; uint x2 = 0x63117E71;
-	uint x3 = 0x35481EAE; uint x4 = 0x22512D5B; uint x5 = 0xE5D94E63;
-	uint x6 = 0x7E624131; uint x7 = 0xF4CC12BE; uint x8 = 0xC2D0B696;
-	uint x9 = 0x42AF2070; uint xa = 0xD0720C35; uint xb = 0x3361DA8C;
-	uint xc = 0x28CCECA4; uint xd = 0x8EF8AD83; uint xe = 0x4680AC00;
-	uint xf = 0x40E5FBAB;
-
-	uint xg = 0xD89041C3; uint xh = 0x6107FBD5;
-	uint xi = 0x6C859D41; uint xj = 0xF0B26679; uint xk = 0x09392549;
-	uint xl = 0x5FA25603; uint xm = 0x65C892FD; uint xn = 0x93CB6285;
-	uint xo = 0x2AF2B5AE; uint xp = 0x9E4B4E60; uint xq = 0x774ABFDD;
-	uint xr = 0x85254725; uint xs = 0x15815AEB; uint xt = 0x4AB6AAD6;
-	uint xu = 0x9CDAF8AF; uint xv = 0xD6032C0A;
-
-	x0 ^= (in_words[0]);
-	x1 ^= (in_words[1]);
-	x2 ^= (in_words[2]);
-	x3 ^= (in_words[3]);
-	x4 ^= (in_words[4]);
-	x5 ^= (in_words[5]);
-	x6 ^= (in_words[6]);
-	x7 ^= (in_words[7]);
-
-
-	SIXTEEN_ROUNDS;
-	x0 ^= 0x80;
-	SIXTEEN_ROUNDS;
-	xv ^= 0x01;
-	for (int i = 0; i < 10; ++i) SIXTEEN_ROUNDS;
-
-	out_words[0] = x0;
-	out_words[1] = x1;
-	out_words[2] = x2;
-	out_words[3] = x3;
-	out_words[4] = x4;
-	out_words[5] = x5;
-	out_words[6] = x6;
-	out_words[7] = x7;
+        keccak_gpu_state[4] = 0x0000000000000001;
+	keccak_gpu_state[16] = 0x8000000000000000;
+	keccak_block((ulong*)&keccak_gpu_state[0]);
+	for (int i = 0; i<4; i++) { output_dwords[i] = keccak_gpu_state[i]; }
 }
 
 // run-of-the-mill lyra2
@@ -1282,14 +1181,10 @@ void lyra2(const ulong* in_dwords, ulong* out_dwords,__global ulong4* DMatrix)
 	state[2] = SPH_ULONG4(0x6a09e667f3bcc908UL, 0xbb67ae8584caa73bUL, 0x3c6ef372fe94f82bUL, 0xa54ff53a5f1d36f1UL);
 	state[3] = SPH_ULONG4(0x510e527fade682d1UL, 0x9b05688c2b3e6c1fUL, 0x1f83d9abfb41bd6bUL, 0x5be0cd19137e2179UL);
 	for (int i = 0; i<12; i++) { round_lyra(state); } 
-
 	state[0] ^= SPH_ULONG4(0x20,0x20,0x20,0x01);
 	state[1] ^= SPH_ULONG4(0x04,0x04,0x80,0x0100000000000000);
-
 	for (int i = 0; i<12; i++) { round_lyra(state); } 
-
 	uint ps1 = (memshift * 3);
-	//#pragma unroll 4
 	for (int i = 0; i < 4; i++)
 	{
 		uint s1 = ps1 - memshift * i;
@@ -1299,315 +1194,329 @@ void lyra2(const ulong* in_dwords, ulong* out_dwords,__global ulong4* DMatrix)
 		round_lyra(state);
 	}
 
-    //////
-	ulong4 state1[3];
-	 //iteration 0/3
-	 state[0] ^= (state1[0] = (DMatrix)[0]);
-	 state[1] ^= (state1[1] = (DMatrix)[1]);
-	 state[2] ^= (state1[2] = (DMatrix)[2]);
-	 round_lyra(state);
-	 (DMatrix)[21] = (state1[0] ^= state[0]);
-	 (DMatrix)[22] = (state1[1] ^= state[1]);
-	 (DMatrix)[23] = (state1[2] ^= state[2]);
-	 //iteration 1/3
-	 state[0] ^= (state1[0] = (DMatrix)[3]);
-	 state[1] ^= (state1[1] = (DMatrix)[4]);
-	 state[2] ^= (state1[2] = (DMatrix)[5]);
-	 round_lyra(state);
-	 (DMatrix)[18] = (state1[0] ^= state[0]);
-	 (DMatrix)[19] = (state1[1] ^= state[1]);
-	 (DMatrix)[20] = (state1[2] ^= state[2]);
-	 //iteration 2/3
-	 state[0] ^= (state1[0] = (DMatrix)[6]);
-	 state[1] ^= (state1[1] = (DMatrix)[7]);
-	 state[2] ^= (state1[2] = (DMatrix)[8]);
-	 round_lyra(state);
-	 (DMatrix)[15] = (state1[0] ^= state[0]);
-	 (DMatrix)[16] = (state1[1] ^= state[1]);
-	 (DMatrix)[17] = (state1[2] ^= state[2]);
-	 //iteration 3/3
-	 state[0] ^= (state1[0] = (DMatrix)[9]);
-	 state[1] ^= (state1[1] = (DMatrix)[10]);
-	 state[2] ^= (state1[2] = (DMatrix)[11]);
-	 round_lyra(state);
-	 (DMatrix)[12] = (state1[0] ^= state[0]);
-	 (DMatrix)[13] = (state1[1] ^= state[1]);
-	 (DMatrix)[14] = (state1[2] ^= state[2]);
-	//////
-	 ulong4 state2[3];
-	 ps1 = (memshift * 4 * 1);
-	 uint ps2 = (memshift * 4 * 0);
-	 uint ps3 = (memshift * 3 + memshift * 4 * 2);
-	 for (int i = 0; i < 4; i++)
-	 {
-		 uint s1 = ps1 + i*memshift;
-		 uint s2 = ps2 + i*memshift;
-		 uint s3 = ps3 - i*memshift;
-		 for (int j = 0; j < 3; j++)  state1[j] = (DMatrix)[j + s1];
-		 for (int j = 0; j < 3; j++)  state2[j] = (DMatrix)[j + s2];
-		 for (int j = 0; j < 3; j++) {
-			 ulong4 tmp = state1[j] + state2[j];
-			 state[j] ^= tmp;
-		 }
-		 round_lyra(state);
-		 for (int j = 0; j < 3; j++) {
-			 state1[j] ^= state[j];
-			 (DMatrix)[j + s3] = state1[j];
-		 }
-		 ((ulong*)state2)[0] ^= ((ulong*)state)[11];
-		 for (int j = 0; j < 11; j++)
-			 ((ulong*)state2)[j + 1] ^= ((ulong*)state)[j];
-		 for (int j = 0; j < 3; j++)
-			 (DMatrix)[j + s2] = state2[j];
-	 }
-	//////
-	 ps1 = (memshift * 4 * 2);
-	 ps2 = (memshift * 4 * 1);
-	 ps3 = (memshift * 3 + memshift * 4 * 3);
-	 for (int i = 0; i < 4; i++)
-	 {
-		 uint s1 = ps1 + i*memshift;
-		 uint s2 = ps2 + i*memshift;
-		 uint s3 = ps3 - i*memshift;
-		 for (int j = 0; j < 3; j++)  state1[j] = (DMatrix)[j + s1];
-		 for (int j = 0; j < 3; j++)  state2[j] = (DMatrix)[j + s2];
-		 for (int j = 0; j < 3; j++) {
-			 ulong4 tmp = state1[j] + state2[j];
-			 state[j] ^= tmp;
-		 }
-		 round_lyra(state);
-		 for (int j = 0; j < 3; j++) {
-			 state1[j] ^= state[j];
-			 (DMatrix)[j + s3] = state1[j];
-		 }
-		 ((ulong*)state2)[0] ^= ((ulong*)state)[11];
-		 for (int j = 0; j < 11; j++)
-			 ((ulong*)state2)[j + 1] ^= ((ulong*)state)[j];
-		 for (int j = 0; j < 3; j++)
-			 (DMatrix)[j + s2] = state2[j];
-	 }	
-    //////	
-    uint rowa;
+	reduceDuplexf(state,DMatrix);
+	reduceDuplexRowSetupf(1, 0, 2, state,DMatrix);
+        reduceDuplexRowSetupf(2, 1, 3, state,DMatrix);
+
+	uint rowa;
 	uint prev = 3;
-	for (uint f = 0; f<4; f++) {
+	for (uint i = 0; i<4; i++) {
 		rowa = state[0].x & 3;
-		////		
-			ps1 = (memshift * 4 * prev);
-			ps2 = (memshift * 4 * rowa);
-			ps3 = (memshift * 4 * f);
-			for (int i = 0; i < 4; i++)
-			 {
-			  uint s1 = ps1 + i*memshift;
-			  uint s2 = ps2 + i*memshift;
-			  uint s3 = ps3 + i*memshift;
-					 for (int j = 0; j < 3; j++)   state1[j] = (DMatrix)[j + s1];
-					 for (int j = 0; j < 3; j++)   state2[j] = (DMatrix)[j + s2];
-					 for (int j = 0; j < 3; j++)   state1[j] += state2[j];
-					 for (int j = 0; j < 3; j++)   state[j] ^= state1[j];
-					 round_lyra(state);
-					 ((ulong*)state2)[0] ^= ((ulong*)state)[11];
-			  for (int j = 0; j < 11; j++)
-				  ((ulong*)state2)[j + 1] ^= ((ulong*)state)[j];
-					 if (rowa != f) {
-						 for (int j = 0; j < 3; j++)
-							 (DMatrix)[j + s2] = state2[j];
-						 for (int j = 0; j < 3; j++)
-							 (DMatrix)[j + s3] ^= state[j];
-					 }
-					 else {
-						 for (int j = 0; j < 3; j++)
-							 state2[j] ^= state[j];
-						 for (int j = 0; j < 3; j++)
-							 (DMatrix)[j + s2] = state2[j];
-					 }
-
-			 }
-		////
-		prev = f;
+		reduceDuplexRowf(prev, rowa, i, state, DMatrix);
+		prev = i;
 	}
+
 	uint shift = (memshift * 4 * rowa);
-
-	state[0] ^= (DMatrix)[shift];
-        state[1] ^= (DMatrix)[1+shift];
-        state[2] ^= (DMatrix)[2+shift];
-
+	for (int j = 0; j < 3; j++)
+		state[j] ^= (DMatrix)[j+shift];
 	for (int i = 0; i < 12; i++)
 		round_lyra(state);
-	
-        out_dwords[0] = ((ulong*)state)[0];
-        out_dwords[1] = ((ulong*)state)[1];
-        out_dwords[2] = ((ulong*)state)[2];
-        out_dwords[3] = ((ulong*)state)[3];
+	for (int i = 0; i<4; i++) {out_dwords[i] = ((ulong*)state)[i];} 
 }
 
-// lyra2re252, in(80 bytes), out(32 bytes)
-void lyra2re2_hash80_noswap(const uint* blockToHash, uint* hashedHeader, __global ulong4* nodes)
-{
-	uint hashB[8];
-
-    blake80_noswap(blockToHash, hashedHeader);
-    keccak32((ulong*)hashedHeader, (ulong*)hashB);
-    cubehash32(hashB, hashedHeader);
-    lyra2((ulong*)hashedHeader, (ulong*)hashB, nodes);
-    skein32((ulong*)hashB, (ulong*)hashedHeader);
-    cubehash32(hashedHeader, hashB);
-    bmw32(hashB, hashedHeader);
-}
-
-// lyra2re252, in(52 bytes), out(32 bytes)
-void lyra2re2_hash52(const uint* blockToHash, uint* hashedHeader, __global ulong4* nodes)
-{
-	uint hashB[8];
-
-    blake52(blockToHash, hashedHeader);
-    keccak32((ulong*)hashedHeader, (ulong*)hashB);
-    cubehash32(hashB, hashedHeader);
-    lyra2((ulong*)hashedHeader, (ulong*)hashB, nodes);
-    skein32((ulong*)hashB, (ulong*)hashedHeader);
-    cubehash32(hashedHeader, hashB);
-    bmw32(hashB, hashedHeader);
-}
-
-#define HASH_WORDS 8
 #define MIX_WORDS 16
-
-// Main hash function, in(80 bytes), out(32 bytes)
-void hashimoto_old(uint nonce_debug, uint *blockToHash, __global const uint *dag, const ulong n, const uint height, __global ulong4* nodes)
-{
-    const ulong mixhashes = MIX_BYTES / HASH_BYTES;
-    const ulong wordhashes = MIX_BYTES / WORD_BYTES;
-    uint mix[MIX_BYTES/sizeof(uint)];
-    uint newdata[MIX_BYTES/sizeof(uint)];
-
-    //uint nonce = sph_bswap32(blockToHash[19]);
-	
-	lyra2re2_hash80_noswap(blockToHash,blockToHash, nodes);
-
-    //if (nonce_debug == 0) printf("old_nonce(%u) -> %08x%08x%08x%08x%08x%08x%08x%08x\n", nonce_debug, blockToHash[0], blockToHash[1], blockToHash[2], blockToHash[3], blockToHash[4], blockToHash[5], blockToHash[6], blockToHash[7]);
-
-	mix[0] = blockToHash[0];
-	mix[1] = blockToHash[1];
-	mix[2] = blockToHash[2];
-	mix[3] = blockToHash[3];
-	mix[4] = blockToHash[4];
-	mix[5] = blockToHash[5];
-	mix[6] = blockToHash[6];
-	mix[7] = blockToHash[7];
-	mix[8] = blockToHash[0];
-	mix[9] = blockToHash[1];
-	mix[10] = blockToHash[2];
-	mix[11] = blockToHash[3];
-	mix[12] = blockToHash[4];
-	mix[13] = blockToHash[5];
-	mix[14] = blockToHash[6];
-	mix[15] = blockToHash[7];
-
-    for(int i = 0; i < ACCESSES; i++) {
-        uint p = fnv(i ^ blockToHash[0], mix[i % (MIX_BYTES/sizeof(uint))]) % (n / mixhashes) * mixhashes;
-        //if (nonce_debug == 0 && i < 2) printf("old_p(%u) -> %u num=%u\n", nonce_debug, p, mix[i % 16]);
-
-        for(int j = 0; j < mixhashes; j++) {
-            ulong pj = (p+j)*8;
-
-            newdata[(j * 8)] = dag[pj];
-            newdata[(j * 8)+1] = dag[pj+1];
-            newdata[(j * 8)+2] = dag[pj+2];
-            newdata[(j * 8)+3] = dag[pj+3];
-            newdata[(j * 8)+4] = dag[pj+4];
-            newdata[(j * 8)+5] = dag[pj+5];
-            newdata[(j * 8)+6] = dag[pj+6];
-            newdata[(j * 8)+7] = dag[pj+7];
-        }
-        for(int i = 0; i < MIX_BYTES/sizeof(uint); i++) {
-            mix[i] = fnv(mix[i], newdata[i]);
-        }
-    }
-
-    // cmix -> result.cmix. Also goes at end of header.
-    blockToHash[8] = height;
-    blockToHash[9] = fnv(fnv(fnv(mix[0], mix[0+1]), mix[0+2]), mix[0+3]);
-	blockToHash[10] = fnv(fnv(fnv(mix[4], mix[4+1]), mix[4+2]), mix[4+3]);
-	blockToHash[11] = fnv(fnv(fnv(mix[8], mix[8+1]), mix[8+2]), mix[8+3]);
-	blockToHash[12] = fnv(fnv(fnv(mix[12], mix[12+1]), mix[12+2]), mix[12+3]);
-
-    // Final hash is first hash + mix + height
-    lyra2re2_hash52(blockToHash, blockToHash, nodes);
-}
-
 
 // Main hash function, in(80 bytes), out(32 bytes)
 // (version which makes use of vector units)
 inline void hashimoto_vector(uint *blockToHash, __global const uint16 *dag, const ulong n, const uint height, __global ulong4* nodes)
 {
-	lyra2re2_hash80_noswap(blockToHash, blockToHash, nodes);
-
+/////inlinefunc
+	//blake32
+		uint hashB[8];
+		BLAKE256_STATE;
+		BLAKE256_COMPRESS32_STATE;
+		INIT_BLAKE256_STATE;
+		T0 = SPH_T32(T0 + 512);        
+                BLAKE256_COMPRESS_BEGIN((blockToHash[0]),(blockToHash[1]),(blockToHash[2]),(blockToHash[3]),(blockToHash[4]),(blockToHash[5]),(blockToHash[6]),(blockToHash[7]),(blockToHash[8]),(blockToHash[9]),(blockToHash[10]),(blockToHash[11]),(blockToHash[12]),(blockToHash[13]),(blockToHash[14]),(blockToHash[15]));
+                #pragma unroll 14
+		for (uint R = 0; R< BLAKE32_ROUNDS; R++) {
+				BLAKE256_GS_ALT(0, 4, 0x8, 0xC, 0x0);
+				BLAKE256_GS_ALT(1, 5, 0x9, 0xD, 0x2);
+				BLAKE256_GS_ALT(2, 6, 0xA, 0xE, 0x4);
+				BLAKE256_GS_ALT(3, 7, 0xB, 0xF, 0x6);
+				BLAKE256_GS_ALT(0, 5, 0xA, 0xF, 0x8);
+				BLAKE256_GS_ALT(1, 6, 0xB, 0xC, 0xA);
+				BLAKE256_GS_ALT(2, 7, 0x8, 0xD, 0xC);
+				BLAKE256_GS_ALT(3, 4, 0x9, 0xE, 0xE);
+		}
+		BLAKE256_COMPRESS_END;
+		T0 -= 512 - 128;
+		T0 = SPH_T32(T0 + 512);
+                BLAKE256_COMPRESS_BEGIN((blockToHash[16]),(blockToHash[17]),(blockToHash[18]),(blockToHash[19]),2147483648,0,0,0,0,0,0,0,0,1,0,640);
+                #pragma unroll 14
+		for (uint R = 0; R< BLAKE32_ROUNDS; R++) {
+				BLAKE256_GS_ALT(0, 4, 0x8, 0xC, 0x0);
+				BLAKE256_GS_ALT(1, 5, 0x9, 0xD, 0x2);
+				BLAKE256_GS_ALT(2, 6, 0xA, 0xE, 0x4);
+				BLAKE256_GS_ALT(3, 7, 0xB, 0xF, 0x6);
+				BLAKE256_GS_ALT(0, 5, 0xA, 0xF, 0x8);
+				BLAKE256_GS_ALT(1, 6, 0xB, 0xC, 0xA);
+				BLAKE256_GS_ALT(2, 7, 0x8, 0xD, 0xC);
+				BLAKE256_GS_ALT(3, 4, 0x9, 0xE, 0xE);
+		}
+		BLAKE256_COMPRESS_END;
+                uint hashedHeader[8];
+		hashedHeader[0] = sph_bswap32(H0);
+		hashedHeader[1] = sph_bswap32(H1);
+		hashedHeader[2] = sph_bswap32(H2);
+		hashedHeader[3] = sph_bswap32(H3);
+		hashedHeader[4] = sph_bswap32(H4);
+		hashedHeader[5] = sph_bswap32(H5);
+		hashedHeader[6] = sph_bswap32(H6);
+		hashedHeader[7] = sph_bswap32(H7);
+		keccak32((ulong*)hashedHeader, (ulong*)hashB);
+    //cubehash32
+		uint x0 = 0xEA2BD4B4; uint x1 = 0xCCD6F29F; uint x2 = 0x63117E71;
+		uint x3 = 0x35481EAE; uint x4 = 0x22512D5B; uint x5 = 0xE5D94E63;
+		uint x6 = 0x7E624131; uint x7 = 0xF4CC12BE; uint x8 = 0xC2D0B696;
+		uint x9 = 0x42AF2070; uint xa = 0xD0720C35; uint xb = 0x3361DA8C;
+		uint xc = 0x28CCECA4; uint xd = 0x8EF8AD83; uint xe = 0x4680AC00;
+		uint xf = 0x40E5FBAB;
+		uint xg = 0xD89041C3; uint xh = 0x6107FBD5;
+		uint xi = 0x6C859D41; uint xj = 0xF0B26679; uint xk = 0x09392549;
+		uint xl = 0x5FA25603; uint xm = 0x65C892FD; uint xn = 0x93CB6285;
+		uint xo = 0x2AF2B5AE; uint xp = 0x9E4B4E60; uint xq = 0x774ABFDD;
+		uint xr = 0x85254725; uint xs = 0x15815AEB; uint xt = 0x4AB6AAD6;
+		uint xu = 0x9CDAF8AF; uint xv = 0xD6032C0A;
+		x0 ^= (hashB[0]);
+		x1 ^= (hashB[1]);
+		x2 ^= (hashB[2]);
+		x3 ^= (hashB[3]);
+		x4 ^= (hashB[4]);
+		x5 ^= (hashB[5]);
+		x6 ^= (hashB[6]);
+		x7 ^= (hashB[7]);
+		SIXTEEN_ROUNDS;
+		x0 ^= 0x80;
+		SIXTEEN_ROUNDS;
+		xv ^= 0x01;
+		for (int i = 0; i < 10; ++i) SIXTEEN_ROUNDS;
+		hashedHeader[0] = x0;
+		hashedHeader[1] = x1;
+		hashedHeader[2] = x2;
+		hashedHeader[3] = x3;
+		hashedHeader[4] = x4;
+		hashedHeader[5] = x5;
+		hashedHeader[6] = x6;
+		hashedHeader[7] = x7;
+    lyra2((ulong*)hashedHeader, (ulong*)hashB, nodes);
+    skein32((ulong*)hashB, (ulong*)hashedHeader);
+    //cubehash32
+        x0 = 0xEA2BD4B4; x1 = 0xCCD6F29F; x2 = 0x63117E71;
+        x3 = 0x35481EAE; x4 = 0x22512D5B; x5 = 0xE5D94E63;
+        x6 = 0x7E624131; x7 = 0xF4CC12BE; x8 = 0xC2D0B696;
+        x9 = 0x42AF2070; xa = 0xD0720C35; xb = 0x3361DA8C;
+        xc = 0x28CCECA4; xd = 0x8EF8AD83; xe = 0x4680AC00;
+        xf = 0x40E5FBAB;
+        xg = 0xD89041C3; xh = 0x6107FBD5;
+        xi = 0x6C859D41; xj = 0xF0B26679; xk = 0x09392549;
+        xl = 0x5FA25603; xm = 0x65C892FD; xn = 0x93CB6285;
+        xo = 0x2AF2B5AE; xp = 0x9E4B4E60; xq = 0x774ABFDD;
+        xr = 0x85254725; xs = 0x15815AEB; xt = 0x4AB6AAD6;
+        xu = 0x9CDAF8AF; xv = 0xD6032C0A;
+        x0 ^= (hashedHeader[0]);
+        x1 ^= (hashedHeader[1]);
+        x2 ^= (hashedHeader[2]);
+        x3 ^= (hashedHeader[3]);
+        x4 ^= (hashedHeader[4]);
+        x5 ^= (hashedHeader[5]);
+        x6 ^= (hashedHeader[6]);
+        x7 ^= (hashedHeader[7]);
+        SIXTEEN_ROUNDS;
+        x0 ^= 0x80;
+        SIXTEEN_ROUNDS;
+        xv ^= 0x01;
+        for (int i = 0; i < 10; ++i) SIXTEEN_ROUNDS;
+        hashB[0] = x0;
+        hashB[1] = x1;
+        hashB[2] = x2;
+        hashB[3] = x3;
+        hashB[4] = x4;
+        hashB[5] = x5;
+        hashB[6] = x6;
+        hashB[7] = x7;
+    //bmw32
+        uint dh[16] = {
+                0x40414243, 0x44454647,
+                0x48494A4B, 0x4C4D4E4F,
+                0x50515253, 0x54555657,
+                0x58595A5B, 0x5C5D5E5F,
+                0x60616263, 0x64656667,
+                0x68696A6B, 0x6C6D6E6F,
+                0x70717273, 0x74757677,
+                0x78797A7B, 0x7C7D7E7F
+        };
+        uint final_s[16] = {
+                0xaaaaaaa0, 0xaaaaaaa1, 0xaaaaaaa2,
+                0xaaaaaaa3, 0xaaaaaaa4, 0xaaaaaaa5,
+                0xaaaaaaa6, 0xaaaaaaa7, 0xaaaaaaa8,
+                0xaaaaaaa9, 0xaaaaaaaa, 0xaaaaaaab,
+                0xaaaaaaac, 0xaaaaaaad, 0xaaaaaaae,
+                0xaaaaaaaf
+        };
+        uint message[16]; 
+        for (int i = 0; i<8; i++) message[i] = (hashB[i]);
+        for (int i = 9; i<14; i++) message[i] = 0;
+        message[8]= 0x80;
+        message[14]=0x100;
+        message[15]=0;
+        Compression256(message, dh);
+        Compression256(dh, final_s);
+        for (int i=8; i<16; i++)
+                blockToHash[i-8] = (final_s[i]);
+////inlinefunc
 	const ulong mixhashes = MIX_BYTES / HASH_BYTES;    // 2
 	const ulong wordhashes = MIX_BYTES / WORD_BYTES;   // 16
 	MixNodes mix;                  // 64 bytes
 	
-	//if (nonce_debug == 0) printf("nonce(%u) -> %08x%08x%08x%08x%08x%08x%08x%08x\n", nonce_debug, blockToHash[0], blockToHash[1], blockToHash[2], blockToHash[3], blockToHash[4], blockToHash[5], blockToHash[6], blockToHash[7]);
-
 	mix.nodes16 = (uint16)(blockToHash[0], blockToHash[1], blockToHash[2], blockToHash[3],
 		blockToHash[4], blockToHash[5], blockToHash[6], blockToHash[7],
 		blockToHash[0], blockToHash[1], blockToHash[2], blockToHash[3],
 		blockToHash[4], blockToHash[5], blockToHash[6], blockToHash[7]);
 
-
 	for (uint i = 0; i < ACCESSES; i++) {
-		// Pick a dag index to mix with
 		uint p = fnv(i ^ blockToHash[0], mix.values[i % 16]) % (n / mixhashes);// * mixhashes;
-        //if (nonce_debug == 0 && i < 2) 
-        //{
-        //	printf("[%u] p(%u) -> %u old=%u value=%u\n", i, nonce_debug, p, old_p, mix.values[i % 16]);
-		//}
-
-		 // Mix in mixer. Note dag access is at most aligned to 64 bytes
 		mix.nodes16 *= FNV_PRIME;
 		mix.nodes16 ^= dag[p];
 	}
 
 	// cmix -> result.cmix. Also goes at end of header.
 	blockToHash[8] = height;
-	
 	blockToHash[9] = fnv(fnv(fnv(mix.values[0], mix.values[0 + 1]), mix.values[0 + 2]), mix.values[0 + 3]);
 	blockToHash[10] = fnv(fnv(fnv(mix.values[4], mix.values[4 + 1]), mix.values[4 + 2]), mix.values[4 + 3]);
 	blockToHash[11] = fnv(fnv(fnv(mix.values[8], mix.values[8 + 1]), mix.values[8 + 2]), mix.values[8 + 3]);
 	blockToHash[12] = fnv(fnv(fnv(mix.values[12], mix.values[12 + 1]), mix.values[12 + 2]), mix.values[12 + 3]);
-	
 
-	// Vector version for ref
-	/*
-	0123
-	4567
-	89AB
-	CDEF
-	*/
-	/*
-	// fnv(x, y)
-	uint4 store = mix.nodes16.s048c * FNV_PRIME;
-	store ^= mix.nodes16.s159D;
-
-	// fnv(fnv(x, y), z)
-	store *= FNV_PRIME;
-	store ^= mix.nodes16.s26AE;
-
-	// fnv(fnv(fnv(x, y), z), w)
-	store *= FNV_PRIME;
-	store ^= mix.nodes16.s37BF;
-
-	blockToHash[9] = store.s0;
-	blockToHash[10] = store.s1;
-	blockToHash[11] = store.s2;
-	blockToHash[12] = store.s3;*/
-
-    // Final hash is first hash + mix + height
-    lyra2re2_hash52(blockToHash, blockToHash, nodes);
+/////inlinefunc
+    //blake52
+        INIT_BLAKE256_STATE;
+        T0 = SPH_C32(0xFFFFFE00) + 416;
+        T1 = SPH_C32(0xFFFFFFFF);
+        T0 = SPH_T32(T0 + 512);
+        T1 = SPH_T32(T1 + 1);        
+        BLAKE256_COMPRESS_BEGIN(sph_bswap32(blockToHash[0]),sph_bswap32(blockToHash[1]),sph_bswap32(blockToHash[2]),sph_bswap32(blockToHash[3]),sph_bswap32(blockToHash[4]),sph_bswap32(blockToHash[5]),sph_bswap32(blockToHash[6]),sph_bswap32(blockToHash[7]),sph_bswap32(blockToHash[8]),sph_bswap32(blockToHash[9]),sph_bswap32(blockToHash[10]),sph_bswap32(blockToHash[11]),sph_bswap32(blockToHash[12]),2147483649,0,416);
+        #pragma unroll 14
+        for (uint R = 0; R< BLAKE32_ROUNDS; R++) {
+                BLAKE256_GS_ALT(0, 4, 0x8, 0xC, 0x0);
+                BLAKE256_GS_ALT(1, 5, 0x9, 0xD, 0x2);
+                BLAKE256_GS_ALT(2, 6, 0xA, 0xE, 0x4);
+                BLAKE256_GS_ALT(3, 7, 0xB, 0xF, 0x6);
+                BLAKE256_GS_ALT(0, 5, 0xA, 0xF, 0x8);
+                BLAKE256_GS_ALT(1, 6, 0xB, 0xC, 0xA);
+                BLAKE256_GS_ALT(2, 7, 0x8, 0xD, 0xC);
+                BLAKE256_GS_ALT(3, 4, 0x9, 0xE, 0xE);
+        }
+        BLAKE256_COMPRESS_END;
+        hashedHeader[0] = sph_bswap32(H0);
+        hashedHeader[1] = sph_bswap32(H1);
+        hashedHeader[2] = sph_bswap32(H2);
+        hashedHeader[3] = sph_bswap32(H3);
+        hashedHeader[4] = sph_bswap32(H4);
+        hashedHeader[5] = sph_bswap32(H5);
+        hashedHeader[6] = sph_bswap32(H6);
+        hashedHeader[7] = sph_bswap32(H7);
+    keccak32((ulong*)hashedHeader, (ulong*)hashB);
+    //cubehash32
+        x0 = 0xEA2BD4B4; x1 = 0xCCD6F29F; x2 = 0x63117E71;
+        x3 = 0x35481EAE; x4 = 0x22512D5B; x5 = 0xE5D94E63;
+        x6 = 0x7E624131; x7 = 0xF4CC12BE; x8 = 0xC2D0B696;
+        x9 = 0x42AF2070; xa = 0xD0720C35; xb = 0x3361DA8C;
+        xc = 0x28CCECA4; xd = 0x8EF8AD83; xe = 0x4680AC00;
+        xf = 0x40E5FBAB;
+        xg = 0xD89041C3; xh = 0x6107FBD5;
+        xi = 0x6C859D41; xj = 0xF0B26679; xk = 0x09392549;
+        xl = 0x5FA25603; xm = 0x65C892FD; xn = 0x93CB6285;
+        xo = 0x2AF2B5AE; xp = 0x9E4B4E60; xq = 0x774ABFDD;
+        xr = 0x85254725; xs = 0x15815AEB; xt = 0x4AB6AAD6;
+        xu = 0x9CDAF8AF; xv = 0xD6032C0A;
+        x0 ^= (hashB[0]);
+        x1 ^= (hashB[1]);
+        x2 ^= (hashB[2]);
+        x3 ^= (hashB[3]);
+        x4 ^= (hashB[4]);
+        x5 ^= (hashB[5]);
+        x6 ^= (hashB[6]);
+        x7 ^= (hashB[7]);
+        SIXTEEN_ROUNDS;
+        x0 ^= 0x80;
+        SIXTEEN_ROUNDS;
+        xv ^= 0x01;
+        for (int i = 0; i < 10; ++i) SIXTEEN_ROUNDS;
+        hashedHeader[0] = x0;
+        hashedHeader[1] = x1;
+        hashedHeader[2] = x2;
+        hashedHeader[3] = x3;
+        hashedHeader[4] = x4;
+        hashedHeader[5] = x5;
+        hashedHeader[6] = x6;
+        hashedHeader[7] = x7;
+    lyra2((ulong*)hashedHeader, (ulong*)hashB, nodes);
+    skein32((ulong*)hashB, (ulong*)hashedHeader);
+    //cubehash32
+        x0 = 0xEA2BD4B4; x1 = 0xCCD6F29F; x2 = 0x63117E71;
+        x3 = 0x35481EAE; x4 = 0x22512D5B; x5 = 0xE5D94E63;
+        x6 = 0x7E624131; x7 = 0xF4CC12BE; x8 = 0xC2D0B696;
+        x9 = 0x42AF2070; xa = 0xD0720C35; xb = 0x3361DA8C;
+        xc = 0x28CCECA4; xd = 0x8EF8AD83; xe = 0x4680AC00;
+        xf = 0x40E5FBAB;
+        xg = 0xD89041C3; xh = 0x6107FBD5;
+        xi = 0x6C859D41; xj = 0xF0B26679; xk = 0x09392549;
+        xl = 0x5FA25603; xm = 0x65C892FD; xn = 0x93CB6285;
+        xo = 0x2AF2B5AE; xp = 0x9E4B4E60; xq = 0x774ABFDD;
+        xr = 0x85254725; xs = 0x15815AEB; xt = 0x4AB6AAD6;
+        xu = 0x9CDAF8AF; xv = 0xD6032C0A;
+        x0 ^= (hashedHeader[0]);
+        x1 ^= (hashedHeader[1]);
+        x2 ^= (hashedHeader[2]);
+        x3 ^= (hashedHeader[3]);
+        x4 ^= (hashedHeader[4]);
+        x5 ^= (hashedHeader[5]);
+        x6 ^= (hashedHeader[6]);
+        x7 ^= (hashedHeader[7]);
+        SIXTEEN_ROUNDS;
+        x0 ^= 0x80;
+        SIXTEEN_ROUNDS;
+        xv ^= 0x01;
+        for (int i = 0; i < 10; ++i) SIXTEEN_ROUNDS;
+        hashB[0] = x0;
+        hashB[1] = x1;
+        hashB[2] = x2;
+        hashB[3] = x3;
+        hashB[4] = x4;
+        hashB[5] = x5;
+        hashB[6] = x6;
+        hashB[7] = x7;
+   //bmw32
+        uint dh1[16] = {
+                0x40414243, 0x44454647,
+                0x48494A4B, 0x4C4D4E4F,
+                0x50515253, 0x54555657,
+                0x58595A5B, 0x5C5D5E5F,
+                0x60616263, 0x64656667,
+                0x68696A6B, 0x6C6D6E6F,
+                0x70717273, 0x74757677,
+                0x78797A7B, 0x7C7D7E7F
+        };
+        uint final_s1[16] = {
+                0xaaaaaaa0, 0xaaaaaaa1, 0xaaaaaaa2,
+                0xaaaaaaa3, 0xaaaaaaa4, 0xaaaaaaa5,
+                0xaaaaaaa6, 0xaaaaaaa7, 0xaaaaaaa8,
+                0xaaaaaaa9, 0xaaaaaaaa, 0xaaaaaaab,
+                0xaaaaaaac, 0xaaaaaaad, 0xaaaaaaae,
+                0xaaaaaaaf
+        };
+        uint message1[16];
+        for (int i = 0; i<8; i++) message1[i] = (hashB[i]);
+        for (int i = 9; i<14; i++) message1[i] = 0;
+        message1[8]= 0x80;
+        message1[14]=0x100;
+        message1[15]=0;
+        Compression256(message1, dh1);
+        Compression256(dh1, final_s1);
+        for (int i=8; i<16; i++)
+                blockToHash[i-8] = (final_s1[i]);
+/////inlinefunc
 }
-
-// Set to enable hash testing kernel variant
-//#define TEST_KERNEL_HASH
-
-#ifndef TEST_KERNEL_HASH
 
 __attribute__((reqd_work_group_size(WORKSIZE, 1, 1)))
 __kernel void search(
@@ -1626,7 +1535,6 @@ __kernel void search(
 
 	uint saved_height = height;
 	ulong saved_target = target;
-	//printf("Search nonce %u (hash id %u) height %u target=%lx\n", gid, hash_output_idx, saved_height, saved_target);
 
 	// set block
 	uint block[20];
@@ -1654,96 +1562,20 @@ __kernel void search(
 	// Run hashimoto (result hash output to block)
 	hashimoto_vector(block, g_dag, DAG_ITEM_COUNT, height, DMatrix);
 
-	//printf("NONCE[%u] TARGET %08x Hashimoto(%u, %u) -> %08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x\n", gid, target, DAG_ITEM_COUNT*32, height, block[0], block[1], block[2], block[3], block[4], block[5], block[6], block[7]);
-
-	// Check target
-	//ulong* out_long = &block[0];
-	//out_long[3] = 0;
-
 	// target itself should be in little-endian format, 
 #ifdef NVIDIA
 
-	if (block[7] <= target)
-	{
-		//printf("Nonce %u Found target, %lx <= %lx\n", gid, out_long[3], target);
+	if (block[7] < target){
 		uint slot = atomic_inc(&g_output[MAX_OUTPUTS]);
-		//uint2 tgt = as_uint2(target);
-		//printf("candidate %u => %08x %08x < %08x\n", slot, state[0].x, state[0].y, (uint) (target>>32));
 		g_output[slot & MAX_OUTPUTS] = gid;
 	}
 #else
-
-	if (block[7] <= target)
-	{
-		//printf("Nonce %u Found target, %lx <= %lx BLOCK {0x%08x,0x%08x,0x%08x,0x%08x,0x%08x,0x%08x,0x%08x,0x%08x}\n", gid, block[7], target,
-		//	block[0], block[1], block[2], block[3], block[4], block[5], block[6], block[7]);
+	if (block[7] < target){
 		uint slot = min(MAX_OUTPUTS-1u, convert_uint(atomic_inc(&g_output[MAX_OUTPUTS])));
 		g_output[slot] = gid;
 	}
 #endif
 }
-
-#else
-
-__attribute__((reqd_work_group_size(WORKSIZE, 1, 1)))
-__kernel void search(
-	__global volatile hash32_t* restrict g_output,
-	__constant uint const* g_header,
-	__global uint16 const* g_dag,
-	__global uchar* g_lyre_nodes,
-	const ulong DAG_ITEM_COUNT,
-	const uint height
-	)
-{
-	const uint gid = get_global_id(0); // i.e. nonce
-	const uint hash_output_idx = gid - get_global_offset(0);
-	__global ulong4 *DMatrix = (__global ulong4 *)(g_lyre_nodes + (LYRA_SCRATCHBUF_SIZE * (hash_output_idx % MAX_GLOBAL_THREADS)));
-
-	//printf("Search nonce %u (hash id %u) DAG_ITEM_COUNT %u, height %u\n", gid, hash_output_idx, DAG_ITEM_COUNT, height);
-
-	// set block
-	uint block[20];
-	block[0] = g_header[0];
-	block[1] = g_header[1];
-	block[2] = g_header[2];
-	block[3] = g_header[3];
-	block[4] = g_header[4];
-	block[5] = g_header[5];
-	block[6] = g_header[6];
-	block[7] = g_header[7];
-	block[8] = g_header[8];
-	block[9] = g_header[9];
-	block[10] = g_header[10];
-	block[11] = g_header[11];
-	block[12] = g_header[12];
-	block[13] = g_header[13];
-	block[14] = g_header[14];
-	block[15] = g_header[15];
-	block[16] = g_header[16];
-	block[17] = g_header[17];
-	block[18] = g_header[18];
-	block[19] = gid;
-
-	//printf("NONCE[%u] HEADER == %08x,%08x,%08x,%08x,%08x,%08x,%08x\n", gid, 
-	//	block[0], block[1], block[2], block[3], block[4], block[5], block[6], block[7]);
-
-	// Run hashimoto (result hash output to block)
-	hashimoto_vector(block, g_dag, DAG_ITEM_COUNT, height, DMatrix);
-
-	//printf("NONCE[%u] Hashimoto(%u, %u) -> %08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x\n", gid, DAG_ITEM_COUNT*32, height, block[0], block[1], block[2], block[3], block[4], block[5], block[6], block[7]);
-    
-
-	g_output[hash_output_idx].h4[0] = block[0];
-	g_output[hash_output_idx].h4[1] = block[1];
-	g_output[hash_output_idx].h4[2] = block[2];
-	g_output[hash_output_idx].h4[3] = block[3];
-	g_output[hash_output_idx].h4[4] = block[4];
-	g_output[hash_output_idx].h4[5] = block[5];
-	g_output[hash_output_idx].h4[6] = block[6];
-	g_output[hash_output_idx].h4[7] = block[7];
-}
-
-#endif
 
 #ifndef COMPILE_MAIN_ONLY
 
