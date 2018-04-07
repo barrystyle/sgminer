@@ -924,7 +924,7 @@ __kernel void search(
 	INIT_BLAKE256_STATE;
 	T0 = SPH_T32(T0 + 512);        
 	BLAKE256_COMPRESS_BEGIN((block[0]),(block[1]),(block[2]),(block[3]),(block[4]),(block[5]),(block[6]),(block[7]),(block[8]),(block[9]),(block[10]),(block[11]),(block[12]),(block[13]),(block[14]),(block[15]));
-        #pragma nounroll
+        #pragma unroll 14
 	for (uint R = 0; R< 14; R++) {
 			BLAKE256_GS_ALT(0, 4, 0x8, 0xC, 0x0);
 			BLAKE256_GS_ALT(1, 5, 0x9, 0xD, 0x2);
@@ -939,7 +939,7 @@ __kernel void search(
 	T0 -= 512 - 128;
 	T0 = SPH_T32(T0 + 512);
 	BLAKE256_COMPRESS_BEGIN((g_header[16]),(g_header[17]),(g_header[18]),(gid),2147483648,0,0,0,0,0,0,0,0,1,0,640);
-        #pragma nounroll
+        #pragma unroll 14
 	for (uint R = 0; R< 14; R++) {
 			BLAKE256_GS_ALT(0, 4, 0x8, 0xC, 0x0);
 			BLAKE256_GS_ALT(1, 5, 0x9, 0xD, 0x2);
@@ -1126,36 +1126,26 @@ __kernel void search(
         message[11] = 0; message[12] = 0; message[13] = 0; message[8]= 0x80; message[14]=0x100; message[15]=0;
 	Compression256(message, dh);
 	Compression256(dh, final_s);
-                block[0] = (final_s[8]);
-                block[1] = (final_s[9]);
-                block[2] = (final_s[10]);
-                block[3] = (final_s[11]);
-                block[4] = (final_s[12]);
-                block[5] = (final_s[13]);
-                block[6] = (final_s[14]);
-                block[7] = (final_s[15]);
-
+	
 ////inlinefunc
 	const ulong mixhashes = MIX_BYTES / HASH_BYTES;    // 2
 	const ulong wordhashes = MIX_BYTES / WORD_BYTES;   // 16
 	MixNodes mix;                  // 64 bytes
 
-        mix.nodes16 = (uint16)(block[0], block[1], block[2], block[3],
-                block[4], block[5], block[6], block[7],
-                block[0], block[1], block[2], block[3],
-                block[4], block[5], block[6], block[7]);
-        for (uint i = 0; i < ACCESSES; i++) {
-                uint p = fnv(i ^ block[0], mix.values[i % 16]) % (DAG_ITEM_COUNT / mixhashes);
-                mix.nodes16 *= FNV_PRIME;
-                mix.nodes16 ^= g_dag[p];
-        }
+	mix.nodes16 = (uint16)(final_s[8], final_s[9], final_s[10], final_s[11], final_s[12], final_s[13], final_s[14], final_s[15],
+						   final_s[8], final_s[9], final_s[10], final_s[11], final_s[12], final_s[13], final_s[14], final_s[15]);
+	for (uint i = 0; i < ACCESSES; i++) {
+			uint p = fnv(i ^ final_s[8], mix.values[i % 16]) % (DAG_ITEM_COUNT / mixhashes);
+			mix.nodes16 *= FNV_PRIME;
+			mix.nodes16 ^= g_dag[p];
+	}
 	
 	// cmix -> result.cmix. Also goes at end of header.
-	block[8] = height;
-	block[9] = fnv(fnv(fnv(mix.values[0], mix.values[0 + 1]), mix.values[0 + 2]), mix.values[0 + 3]);
-	block[10] = fnv(fnv(fnv(mix.values[4], mix.values[4 + 1]), mix.values[4 + 2]), mix.values[4 + 3]);
-	block[11] = fnv(fnv(fnv(mix.values[8], mix.values[8 + 1]), mix.values[8 + 2]), mix.values[8 + 3]);
-	block[12] = fnv(fnv(fnv(mix.values[12], mix.values[12 + 1]), mix.values[12 + 2]), mix.values[12 + 3]);
+	final_s[0] = height;
+	final_s[1] = fnv(fnv(fnv(mix.values[0], mix.values[0 + 1]), mix.values[0 + 2]), mix.values[0 + 3]);
+	final_s[2] = fnv(fnv(fnv(mix.values[4], mix.values[4 + 1]), mix.values[4 + 2]), mix.values[4 + 3]);
+	final_s[3] = fnv(fnv(fnv(mix.values[8], mix.values[8 + 1]), mix.values[8 + 2]), mix.values[8 + 3]);
+	final_s[4] = fnv(fnv(fnv(mix.values[12], mix.values[12 + 1]), mix.values[12 + 2]), mix.values[12 + 3]);
 
 /////inlinefunc
 
@@ -1165,8 +1155,8 @@ __kernel void search(
 	T1 = SPH_C32(0xFFFFFFFF);
 	T0 = SPH_T32(T0 + 512);
 	T1 = SPH_T32(T1 + 1);        
-	BLAKE256_COMPRESS_BEGIN(sph_bswap32(block[0]),sph_bswap32(block[1]),sph_bswap32(block[2]),sph_bswap32(block[3]),sph_bswap32(block[4]),sph_bswap32(block[5]),sph_bswap32(block[6]),sph_bswap32(block[7]),sph_bswap32(block[8]),sph_bswap32(block[9]),sph_bswap32(block[10]),sph_bswap32(block[11]),sph_bswap32(block[12]),2147483649,0,416);
-        #pragma nounroll
+	BLAKE256_COMPRESS_BEGIN(sph_bswap32(final_s[8]),sph_bswap32(final_s[9]),sph_bswap32(final_s[10]),sph_bswap32(final_s[11]),sph_bswap32(final_s[12]),sph_bswap32(final_s[13]),sph_bswap32(final_s[14]),sph_bswap32(final_s[15]),sph_bswap32(final_s[0]),sph_bswap32(final_s[1]),sph_bswap32(final_s[2]),sph_bswap32(final_s[3]),sph_bswap32(final_s[4]),2147483649,0,416);
+        #pragma unroll 14
 	for (uint R = 0; R< 14; R++) {
 			BLAKE256_GS_ALT(0, 4, 0x8, 0xC, 0x0);
 			BLAKE256_GS_ALT(1, 5, 0x9, 0xD, 0x2);
@@ -1405,7 +1395,6 @@ __kernel void GenerateDAG(uint start, __global const uint16 *_Cache, __global ui
 		uint ParentIdx = fnv(NodeIdx ^ parent, DAGNode.dwords[parent & 7]) % LIGHT_SIZE; // NOTE: LIGHT_SIZE == items, &7 == %8
 		__global const Node *ParentNode = Cache + ParentIdx;
 
-                #pragma nounroll
 		for (uint x = 0; x < 2; ++x)
 		{
 			// NOTE: fnv, we're basically operating on 4 ints at a time here
