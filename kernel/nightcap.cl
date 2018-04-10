@@ -37,12 +37,11 @@
 #define MAX_NONCE_OUTPUTS 255
 #define MAX_HASH_OUTPUTS  256
 
-// DAG Cache node
 typedef union _Node
 {
 	uint dwords[8];
 	uint4 dqwords[2];
-} Node; // NOTE: should be HASH_BYTES long
+} Node;
 
 typedef union _MixNodes {
 	uint values[16];
@@ -55,9 +54,6 @@ typedef union {
 	uint h4[8];
 	ulong h8[4];
 } hash32_t;
-
-//#define fnv(x, y) ((x) * FNV_PRIME ^ (y)) % (0xffffffff)
-//#define fnv_reduce(v) fnv(fnv(fnv(v.x, v.y), v.z), v.w)
 
 inline uint fnv(const uint v1, const uint v2) {
 	return ((v1 * FNV_PRIME) ^ v2) % (0xffffffff);
@@ -448,100 +444,12 @@ uint expand32_2(int i, const uint *M32, const uint *H, const uint *Q)
 
 }
 
-void Compression256(const uint *M32, uint *H)
-{
-	int i;
-	uint XL32, XH32, Q[32];
-
-	Q[0] = (M32[5] ^ H[5]) - (M32[7] ^ H[7]) + (M32[10] ^ H[10]) + (M32[13] ^ H[13]) + (M32[14] ^ H[14]);
-	Q[1] = (M32[6] ^ H[6]) - (M32[8] ^ H[8]) + (M32[11] ^ H[11]) + (M32[14] ^ H[14]) - (M32[15] ^ H[15]);
-	Q[2] = (M32[0] ^ H[0]) + (M32[7] ^ H[7]) + (M32[9] ^ H[9]) - (M32[12] ^ H[12]) + (M32[15] ^ H[15]);
-	Q[3] = (M32[0] ^ H[0]) - (M32[1] ^ H[1]) + (M32[8] ^ H[8]) - (M32[10] ^ H[10]) + (M32[13] ^ H[13]);
-	Q[4] = (M32[1] ^ H[1]) + (M32[2] ^ H[2]) + (M32[9] ^ H[9]) - (M32[11] ^ H[11]) - (M32[14] ^ H[14]);
-	Q[5] = (M32[3] ^ H[3]) - (M32[2] ^ H[2]) + (M32[10] ^ H[10]) - (M32[12] ^ H[12]) + (M32[15] ^ H[15]);
-	Q[6] = (M32[4] ^ H[4]) - (M32[0] ^ H[0]) - (M32[3] ^ H[3]) - (M32[11] ^ H[11]) + (M32[13] ^ H[13]);
-	Q[7] = (M32[1] ^ H[1]) - (M32[4] ^ H[4]) - (M32[5] ^ H[5]) - (M32[12] ^ H[12]) - (M32[14] ^ H[14]);
-	Q[8] = (M32[2] ^ H[2]) - (M32[5] ^ H[5]) - (M32[6] ^ H[6]) + (M32[13] ^ H[13]) - (M32[15] ^ H[15]);
-	Q[9] = (M32[0] ^ H[0]) - (M32[3] ^ H[3]) + (M32[6] ^ H[6]) - (M32[7] ^ H[7]) + (M32[14] ^ H[14]);
-	Q[10] = (M32[8] ^ H[8]) - (M32[1] ^ H[1]) - (M32[4] ^ H[4]) - (M32[7] ^ H[7]) + (M32[15] ^ H[15]);
-	Q[11] = (M32[8] ^ H[8]) - (M32[0] ^ H[0]) - (M32[2] ^ H[2]) - (M32[5] ^ H[5]) + (M32[9] ^ H[9]);
-	Q[12] = (M32[1] ^ H[1]) + (M32[3] ^ H[3]) - (M32[6] ^ H[6]) - (M32[9] ^ H[9]) + (M32[10] ^ H[10]);
-	Q[13] = (M32[2] ^ H[2]) + (M32[4] ^ H[4]) + (M32[7] ^ H[7]) + (M32[10] ^ H[10]) + (M32[11] ^ H[11]);
-	Q[14] = (M32[3] ^ H[3]) - (M32[5] ^ H[5]) + (M32[8] ^ H[8]) - (M32[11] ^ H[11]) - (M32[12] ^ H[12]);
-	Q[15] = (M32[12] ^ H[12]) - (M32[4] ^ H[4]) - (M32[6] ^ H[6]) - (M32[9] ^ H[9]) + (M32[13] ^ H[13]);
-
-	/*  Diffuse the differences in every word in a bijective manner with ssi, and then add the values of the previous double pipe.*/
-	Q[0] = ss0(Q[0]) + H[1];
-	Q[1] = ss1(Q[1]) + H[2];
-	Q[2] = ss2(Q[2]) + H[3];
-	Q[3] = ss3(Q[3]) + H[4];
-	Q[4] = ss4(Q[4]) + H[5];
-	Q[5] = ss0(Q[5]) + H[6];
-	Q[6] = ss1(Q[6]) + H[7];
-	Q[7] = ss2(Q[7]) + H[8];
-	Q[8] = ss3(Q[8]) + H[9];
-	Q[9] = ss4(Q[9]) + H[10];
-	Q[10] = ss0(Q[10]) + H[11];
-	Q[11] = ss1(Q[11]) + H[12];
-	Q[12] = ss2(Q[12]) + H[13];
-	Q[13] = ss3(Q[13]) + H[14];
-	Q[14] = ss4(Q[14]) + H[15];
-	Q[15] = ss0(Q[15]) + H[0];
-
-	/* This is the Message expansion or f_1 in the documentation.       */
-	/* It has 16 rounds.                                                */
-	/* Blue Midnight Wish has two tunable security parameters.          */
-	/* The parameters are named EXPAND_1_ROUNDS and EXPAND_2_ROUNDS.    */
-	/* The following relation for these parameters should is satisfied: */
-	/* EXPAND_1_ROUNDS + EXPAND_2_ROUNDS = 16                           */
-#pragma unroll
-	for (i = 0; i<2; i++)
-		Q[i + 16] = expand32_1(i + 16, M32, H, Q);
-
-#pragma unroll
-	for (i = 2; i<16; i++)
-		Q[i + 16] = expand32_2(i + 16, M32, H, Q);
-
-	/* Blue Midnight Wish has two temporary cummulative variables that accumulate via XORing */
-	/* 16 new variables that are prooduced in the Message Expansion part.                    */
-	XL32 = Q[16] ^ Q[17] ^ Q[18] ^ Q[19] ^ Q[20] ^ Q[21] ^ Q[22] ^ Q[23];
-	XH32 = XL32^Q[24] ^ Q[25] ^ Q[26] ^ Q[27] ^ Q[28] ^ Q[29] ^ Q[30] ^ Q[31];
-
-
-	/*  This part is the function f_2 - in the documentation            */
-
-	/*  Compute the double chaining pipe for the next message block.    */
-	H[0] = (shl(XH32, 5) ^ shr(Q[16], 5) ^ M32[0]) + (XL32    ^ Q[24] ^ Q[0]);
-	H[1] = (shr(XH32, 7) ^ shl(Q[17], 8) ^ M32[1]) + (XL32    ^ Q[25] ^ Q[1]);
-	H[2] = (shr(XH32, 5) ^ shl(Q[18], 5) ^ M32[2]) + (XL32    ^ Q[26] ^ Q[2]);
-	H[3] = (shr(XH32, 1) ^ shl(Q[19], 5) ^ M32[3]) + (XL32    ^ Q[27] ^ Q[3]);
-	H[4] = (shr(XH32, 3) ^ Q[20] ^ M32[4]) + (XL32    ^ Q[28] ^ Q[4]);
-	H[5] = (shl(XH32, 6) ^ shr(Q[21], 6) ^ M32[5]) + (XL32    ^ Q[29] ^ Q[5]);
-	H[6] = (shr(XH32, 4) ^ shl(Q[22], 6) ^ M32[6]) + (XL32    ^ Q[30] ^ Q[6]);
-	H[7] = (shr(XH32, 11) ^ shl(Q[23], 2) ^ M32[7]) + (XL32    ^ Q[31] ^ Q[7]);
-
-	H[8] = SPH_ROTL32(H[4], 9) + (XH32     ^     Q[24] ^ M32[8]) + (shl(XL32, 8) ^ Q[23] ^ Q[8]);
-	H[9] = SPH_ROTL32(H[5], 10) + (XH32     ^     Q[25] ^ M32[9]) + (shr(XL32, 6) ^ Q[16] ^ Q[9]);
-	H[10] = SPH_ROTL32(H[6], 11) + (XH32     ^     Q[26] ^ M32[10]) + (shl(XL32, 6) ^ Q[17] ^ Q[10]);
-	H[11] = SPH_ROTL32(H[7], 12) + (XH32     ^     Q[27] ^ M32[11]) + (shl(XL32, 4) ^ Q[18] ^ Q[11]);
-	H[12] = SPH_ROTL32(H[0], 13) + (XH32     ^     Q[28] ^ M32[12]) + (shr(XL32, 3) ^ Q[19] ^ Q[12]);
-	H[13] = SPH_ROTL32(H[1], 14) + (XH32     ^     Q[29] ^ M32[13]) + (shr(XL32, 4) ^ Q[20] ^ Q[13]);
-	H[14] = SPH_ROTL32(H[2], 15) + (XH32     ^     Q[30] ^ M32[14]) + (shr(XL32, 7) ^ Q[21] ^ Q[14]);
-	H[15] = SPH_ROTL32(H[3], 16) + (XH32     ^     Q[31] ^ M32[15]) + (shr(XL32, 2) ^ Q[22] ^ Q[15]);
-
-}
-
-//
-// END BMW
-//
-
-
 //
 // BEGIN CUBEHASH
 //
 
 #if !defined SPH_CUBEHASH_UNROLL
-#define SPH_CUBEHASH_UNROLL   0
+#define SPH_CUBEHASH_UNROLL   8
 #endif
 
 __constant static const uint CUBEHASH_IV512[] = {
@@ -1124,8 +1032,113 @@ __kernel void search(
         message[0] = x0; message[1] = x1; message[2] = x2; message[3] = x3; message[4] = x4; 
         message[5] = x5; message[6] = x6; message[7] = x7; message[9] = 0; message[10] = 0;
         message[11] = 0; message[12] = 0; message[13] = 0; message[8]= 0x80; message[14]=0x100; message[15]=0;
-	Compression256(message, dh);
-	Compression256(dh, final_s);
+        //compression256 message_dh_start
+	uint XL32,XH32,Q[32];
+	Q[0]=ss0((message[5]^dh[5])-(message[7]^dh[7])+(message[10]^dh[10])+(message[13]^dh[13])+(message[14]^dh[14]))+dh[1];
+	Q[1]=ss1((message[6]^dh[6])-(message[8]^dh[8])+(message[11]^dh[11])+(message[14]^dh[14])-(message[15]^dh[15]))+dh[2];
+	Q[2]=ss2((message[0]^dh[0])+(message[7]^dh[7])+(message[9]^dh[9])-(message[12]^dh[12])+(message[15]^dh[15]))+dh[3];
+	Q[3]=ss3((message[0]^dh[0])-(message[1]^dh[1])+(message[8]^dh[8])-(message[10]^dh[10])+(message[13]^dh[13]))+dh[4];
+	Q[4]=ss4((message[1]^dh[1])+(message[2]^dh[2])+(message[9]^dh[9])-(message[11]^dh[11])-(message[14]^dh[14]))+dh[5];
+	Q[5]=ss0((message[3]^dh[3])-(message[2]^dh[2])+(message[10]^dh[10])-(message[12]^dh[12])+(message[15]^dh[15]))+dh[6];
+	Q[6]=ss1((message[4]^dh[4])-(message[0]^dh[0])-(message[3]^dh[3])-(message[11]^dh[11])+(message[13]^dh[13]))+dh[7];
+	Q[7]=ss2((message[1]^dh[1])-(message[4]^dh[4])-(message[5]^dh[5])-(message[12]^dh[12])-(message[14]^dh[14]))+dh[8];
+	Q[8]=ss3((message[2]^dh[2])-(message[5]^dh[5])-(message[6]^dh[6])+(message[13]^dh[13])-(message[15]^dh[15]))+dh[9];
+	Q[9]=ss4((message[0]^dh[0])-(message[3]^dh[3])+(message[6]^dh[6])-(message[7]^dh[7])+(message[14]^dh[14]))+dh[10];
+	Q[10]=ss0((message[8]^dh[8])-(message[1]^dh[1])-(message[4]^dh[4])-(message[7]^dh[7])+(message[15]^dh[15]))+dh[11];
+	Q[11]=ss1((message[8]^dh[8])-(message[0]^dh[0])-(message[2]^dh[2])-(message[5]^dh[5])+(message[9]^dh[9]))+dh[12];
+	Q[12]=ss2((message[1]^dh[1])+(message[3]^dh[3])-(message[6]^dh[6])-(message[9]^dh[9])+(message[10]^dh[10]))+dh[13];
+	Q[13]=ss3((message[2]^dh[2])+(message[4]^dh[4])+(message[7]^dh[7])+(message[10]^dh[10])+(message[11]^dh[11]))+dh[14];
+	Q[14]=ss4((message[3]^dh[3])-(message[5]^dh[5])+(message[8]^dh[8])-(message[11]^dh[11])-(message[12]^dh[12]))+dh[15];
+	Q[15]=ss0((message[12]^dh[12])-(message[4]^dh[4])-(message[6]^dh[6])-(message[9]^dh[9])+(message[13]^dh[13]))+dh[0];
+	Q[16]=expand32_1(16,message,dh,Q);
+	Q[17]=expand32_1(17,message,dh,Q);
+	Q[18]=expand32_2(18,message,dh,Q);
+	Q[19]=expand32_2(19,message,dh,Q);
+	Q[20]=expand32_2(20,message,dh,Q);
+	Q[21]=expand32_2(21,message,dh,Q);
+	Q[22]=expand32_2(22,message,dh,Q);
+	Q[23]=expand32_2(23,message,dh,Q);
+	Q[24]=expand32_2(24,message,dh,Q);
+	Q[25]=expand32_2(25,message,dh,Q);
+	Q[26]=expand32_2(26,message,dh,Q);
+	Q[27]=expand32_2(27,message,dh,Q);
+	Q[28]=expand32_2(28,message,dh,Q);
+	Q[29]=expand32_2(29,message,dh,Q);
+	Q[30]=expand32_2(30,message,dh,Q);
+	Q[31]=expand32_2(31,message,dh,Q);
+	Q[32]=expand32_2(32,message,dh,Q);
+	XL32=Q[16]^Q[17]^Q[18]^Q[19]^Q[20]^Q[21]^Q[22]^Q[23];
+	XH32=XL32^Q[24]^Q[25]^Q[26]^Q[27]^Q[28]^Q[29]^Q[30]^Q[31];
+	dh[0]=(shl(XH32,5)^shr(Q[16],5)^message[0])+(XL32^Q[24]^Q[0]);
+	dh[1]=(shr(XH32,7)^shl(Q[17],8)^message[1])+(XL32^Q[25]^Q[1]);
+	dh[2]=(shr(XH32,5)^shl(Q[18],5)^message[2])+(XL32^Q[26]^Q[2]);
+	dh[3]=(shr(XH32,1)^shl(Q[19],5)^message[3])+(XL32^Q[27]^Q[3]);
+	dh[4]=(shr(XH32,3)^Q[20]^message[4])+(XL32^Q[28]^Q[4]);
+	dh[5]=(shl(XH32,6)^shr(Q[21],6)^message[5])+(XL32^Q[29]^Q[5]);
+	dh[6]=(shr(XH32,4)^shl(Q[22],6)^message[6])+(XL32^Q[30]^Q[6]);
+	dh[7]=(shr(XH32,11)^shl(Q[23],2)^message[7])+(XL32^Q[31]^Q[7]);
+	dh[8]=SPH_ROTL32(dh[4],9)+(XH32^Q[24]^message[8])+(shl(XL32,8)^Q[23]^Q[8]);
+	dh[9]=SPH_ROTL32(dh[5],10)+(XH32^Q[25]^message[9])+(shr(XL32,6)^Q[16]^Q[9]);
+	dh[10]=SPH_ROTL32(dh[6],11)+(XH32^Q[26]^message[10])+(shl(XL32,6)^Q[17]^Q[10]);
+	dh[11]=SPH_ROTL32(dh[7],12)+(XH32^Q[27]^message[11])+(shl(XL32,4)^Q[18]^Q[11]);
+	dh[12]=SPH_ROTL32(dh[0],13)+(XH32^Q[28]^message[12])+(shr(XL32,3)^Q[19]^Q[12]);
+	dh[13]=SPH_ROTL32(dh[1],14)+(XH32^Q[29]^message[13])+(shr(XL32,4)^Q[20]^Q[13]);
+	dh[14]=SPH_ROTL32(dh[2],15)+(XH32^Q[30]^message[14])+(shr(XL32,7)^Q[21]^Q[14]);
+	dh[15]=SPH_ROTL32(dh[3],16)+(XH32^Q[31]^message[15])+(shr(XL32,2)^Q[22]^Q[15]);
+        //compression256 message_dh_end
+	//compression256 dh_finals_start
+	Q[0]=ss0((dh[5]^final_s[5])-(dh[7]^final_s[7])+(dh[10]^final_s[10])+(dh[13]^final_s[13])+(dh[14]^final_s[14]))+final_s[1];
+	Q[1]=ss1((dh[6]^final_s[6])-(dh[8]^final_s[8])+(dh[11]^final_s[11])+(dh[14]^final_s[14])-(dh[15]^final_s[15]))+final_s[2];
+	Q[2]=ss2((dh[0]^final_s[0])+(dh[7]^final_s[7])+(dh[9]^final_s[9])-(dh[12]^final_s[12])+(dh[15]^final_s[15]))+final_s[3];
+	Q[3]=ss3((dh[0]^final_s[0])-(dh[1]^final_s[1])+(dh[8]^final_s[8])-(dh[10]^final_s[10])+(dh[13]^final_s[13]))+final_s[4];
+	Q[4]=ss4((dh[1]^final_s[1])+(dh[2]^final_s[2])+(dh[9]^final_s[9])-(dh[11]^final_s[11])-(dh[14]^final_s[14]))+final_s[5];
+	Q[5]=ss0((dh[3]^final_s[3])-(dh[2]^final_s[2])+(dh[10]^final_s[10])-(dh[12]^final_s[12])+(dh[15]^final_s[15]))+final_s[6];
+	Q[6]=ss1((dh[4]^final_s[4])-(dh[0]^final_s[0])-(dh[3]^final_s[3])-(dh[11]^final_s[11])+(dh[13]^final_s[13]))+final_s[7];
+	Q[7]=ss2((dh[1]^final_s[1])-(dh[4]^final_s[4])-(dh[5]^final_s[5])-(dh[12]^final_s[12])-(dh[14]^final_s[14]))+final_s[8];
+	Q[8]=ss3((dh[2]^final_s[2])-(dh[5]^final_s[5])-(dh[6]^final_s[6])+(dh[13]^final_s[13])-(dh[15]^final_s[15]))+final_s[9];
+	Q[9]=ss4((dh[0]^final_s[0])-(dh[3]^final_s[3])+(dh[6]^final_s[6])-(dh[7]^final_s[7])+(dh[14]^final_s[14]))+final_s[10];
+	Q[10]=ss0((dh[8]^final_s[8])-(dh[1]^final_s[1])-(dh[4]^final_s[4])-(dh[7]^final_s[7])+(dh[15]^final_s[15]))+final_s[11];
+	Q[11]=ss1((dh[8]^final_s[8])-(dh[0]^final_s[0])-(dh[2]^final_s[2])-(dh[5]^final_s[5])+(dh[9]^final_s[9]))+final_s[12];
+	Q[12]=ss2((dh[1]^final_s[1])+(dh[3]^final_s[3])-(dh[6]^final_s[6])-(dh[9]^final_s[9])+(dh[10]^final_s[10]))+final_s[13];
+	Q[13]=ss3((dh[2]^final_s[2])+(dh[4]^final_s[4])+(dh[7]^final_s[7])+(dh[10]^final_s[10])+(dh[11]^final_s[11]))+final_s[14];
+	Q[14]=ss4((dh[3]^final_s[3])-(dh[5]^final_s[5])+(dh[8]^final_s[8])-(dh[11]^final_s[11])-(dh[12]^final_s[12]))+final_s[15];
+	Q[15]=ss0((dh[12]^final_s[12])-(dh[4]^final_s[4])-(dh[6]^final_s[6])-(dh[9]^final_s[9])+(dh[13]^final_s[13]))+final_s[0];
+	Q[16]=expand32_1(16,dh,final_s,Q);
+	Q[17]=expand32_1(17,dh,final_s,Q);
+	Q[18]=expand32_2(18,dh,final_s,Q);
+	Q[19]=expand32_2(19,dh,final_s,Q);
+	Q[20]=expand32_2(20,dh,final_s,Q);
+	Q[21]=expand32_2(21,dh,final_s,Q);
+	Q[22]=expand32_2(22,dh,final_s,Q);
+	Q[23]=expand32_2(23,dh,final_s,Q);
+	Q[24]=expand32_2(24,dh,final_s,Q);
+	Q[25]=expand32_2(25,dh,final_s,Q);
+	Q[26]=expand32_2(26,dh,final_s,Q);
+	Q[27]=expand32_2(27,dh,final_s,Q);
+	Q[28]=expand32_2(28,dh,final_s,Q);
+	Q[29]=expand32_2(29,dh,final_s,Q);
+	Q[30]=expand32_2(30,dh,final_s,Q);
+	Q[31]=expand32_2(31,dh,final_s,Q);
+	Q[32]=expand32_2(32,dh,final_s,Q);
+	XL32=Q[16]^Q[17]^Q[18]^Q[19]^Q[20]^Q[21]^Q[22]^Q[23];
+	XH32=XL32^Q[24]^Q[25]^Q[26]^Q[27]^Q[28]^Q[29]^Q[30]^Q[31];
+	final_s[0]=(shl(XH32,5)^shr(Q[16],5)^dh[0])+(XL32^Q[24]^Q[0]);
+	final_s[1]=(shr(XH32,7)^shl(Q[17],8)^dh[1])+(XL32^Q[25]^Q[1]);
+	final_s[2]=(shr(XH32,5)^shl(Q[18],5)^dh[2])+(XL32^Q[26]^Q[2]);
+	final_s[3]=(shr(XH32,1)^shl(Q[19],5)^dh[3])+(XL32^Q[27]^Q[3]);
+	final_s[4]=(shr(XH32,3)^Q[20]^dh[4])+(XL32^Q[28]^Q[4]);
+	final_s[5]=(shl(XH32,6)^shr(Q[21],6)^dh[5])+(XL32^Q[29]^Q[5]);
+	final_s[6]=(shr(XH32,4)^shl(Q[22],6)^dh[6])+(XL32^Q[30]^Q[6]);
+	final_s[7]=(shr(XH32,11)^shl(Q[23],2)^dh[7])+(XL32^Q[31]^Q[7]);
+	final_s[8]=SPH_ROTL32(final_s[4],9)+(XH32^Q[24]^dh[8])+(shl(XL32,8)^Q[23]^Q[8]);
+	final_s[9]=SPH_ROTL32(final_s[5],10)+(XH32^Q[25]^dh[9])+(shr(XL32,6)^Q[16]^Q[9]);
+	final_s[10]=SPH_ROTL32(final_s[6],11)+(XH32^Q[26]^dh[10])+(shl(XL32,6)^Q[17]^Q[10]);
+	final_s[11]=SPH_ROTL32(final_s[7],12)+(XH32^Q[27]^dh[11])+(shl(XL32,4)^Q[18]^Q[11]);
+	final_s[12]=SPH_ROTL32(final_s[0],13)+(XH32^Q[28]^dh[12])+(shr(XL32,3)^Q[19]^Q[12]);
+	final_s[13]=SPH_ROTL32(final_s[1],14)+(XH32^Q[29]^dh[13])+(shr(XL32,4)^Q[20]^Q[13]);
+	final_s[14]=SPH_ROTL32(final_s[2],15)+(XH32^Q[30]^dh[14])+(shr(XL32,7)^Q[21]^Q[14]);
+	final_s[15]=SPH_ROTL32(final_s[3],16)+(XH32^Q[31]^dh[15])+(shr(XL32,2)^Q[22]^Q[15]);
+	//compression256 dh_finals_end
 	
 ////inlinefunc
 	const ulong mixhashes = MIX_BYTES / HASH_BYTES;    // 2
@@ -1327,8 +1340,112 @@ final_s[12] = 0xaaaaaaac; final_s[13] = 0xaaaaaaad; final_s[14] = 0xaaaaaaae; fi
         message[0] = x0; message[1] = x1; message[2] = x2; message[3] = x3; message[4] = x4;
         message[5] = x5; message[6] = x6; message[7] = x7; message[9] = 0; message[10] = 0;
         message[11] = 0; message[12] = 0; message[13] = 0; message[8]= 0x80; message[14]=0x100; message[15]=0;
-	Compression256(message, dh);
-	Compression256(dh, final_s);
+        //compression256 message_dh_start
+        Q[0]=ss0((message[5]^dh[5])-(message[7]^dh[7])+(message[10]^dh[10])+(message[13]^dh[13])+(message[14]^dh[14]))+dh[1];
+        Q[1]=ss1((message[6]^dh[6])-(message[8]^dh[8])+(message[11]^dh[11])+(message[14]^dh[14])-(message[15]^dh[15]))+dh[2];
+        Q[2]=ss2((message[0]^dh[0])+(message[7]^dh[7])+(message[9]^dh[9])-(message[12]^dh[12])+(message[15]^dh[15]))+dh[3];
+        Q[3]=ss3((message[0]^dh[0])-(message[1]^dh[1])+(message[8]^dh[8])-(message[10]^dh[10])+(message[13]^dh[13]))+dh[4];
+        Q[4]=ss4((message[1]^dh[1])+(message[2]^dh[2])+(message[9]^dh[9])-(message[11]^dh[11])-(message[14]^dh[14]))+dh[5];
+        Q[5]=ss0((message[3]^dh[3])-(message[2]^dh[2])+(message[10]^dh[10])-(message[12]^dh[12])+(message[15]^dh[15]))+dh[6];
+        Q[6]=ss1((message[4]^dh[4])-(message[0]^dh[0])-(message[3]^dh[3])-(message[11]^dh[11])+(message[13]^dh[13]))+dh[7];
+        Q[7]=ss2((message[1]^dh[1])-(message[4]^dh[4])-(message[5]^dh[5])-(message[12]^dh[12])-(message[14]^dh[14]))+dh[8];
+        Q[8]=ss3((message[2]^dh[2])-(message[5]^dh[5])-(message[6]^dh[6])+(message[13]^dh[13])-(message[15]^dh[15]))+dh[9];
+        Q[9]=ss4((message[0]^dh[0])-(message[3]^dh[3])+(message[6]^dh[6])-(message[7]^dh[7])+(message[14]^dh[14]))+dh[10];
+        Q[10]=ss0((message[8]^dh[8])-(message[1]^dh[1])-(message[4]^dh[4])-(message[7]^dh[7])+(message[15]^dh[15]))+dh[11];
+        Q[11]=ss1((message[8]^dh[8])-(message[0]^dh[0])-(message[2]^dh[2])-(message[5]^dh[5])+(message[9]^dh[9]))+dh[12];
+        Q[12]=ss2((message[1]^dh[1])+(message[3]^dh[3])-(message[6]^dh[6])-(message[9]^dh[9])+(message[10]^dh[10]))+dh[13];
+        Q[13]=ss3((message[2]^dh[2])+(message[4]^dh[4])+(message[7]^dh[7])+(message[10]^dh[10])+(message[11]^dh[11]))+dh[14];
+        Q[14]=ss4((message[3]^dh[3])-(message[5]^dh[5])+(message[8]^dh[8])-(message[11]^dh[11])-(message[12]^dh[12]))+dh[15];
+        Q[15]=ss0((message[12]^dh[12])-(message[4]^dh[4])-(message[6]^dh[6])-(message[9]^dh[9])+(message[13]^dh[13]))+dh[0];
+        Q[16]=expand32_1(16,message,dh,Q);
+        Q[17]=expand32_1(17,message,dh,Q);
+        Q[18]=expand32_2(18,message,dh,Q);
+        Q[19]=expand32_2(19,message,dh,Q);
+        Q[20]=expand32_2(20,message,dh,Q);
+        Q[21]=expand32_2(21,message,dh,Q);
+        Q[22]=expand32_2(22,message,dh,Q);
+        Q[23]=expand32_2(23,message,dh,Q);
+        Q[24]=expand32_2(24,message,dh,Q);
+        Q[25]=expand32_2(25,message,dh,Q);
+        Q[26]=expand32_2(26,message,dh,Q);
+        Q[27]=expand32_2(27,message,dh,Q);
+        Q[28]=expand32_2(28,message,dh,Q);
+        Q[29]=expand32_2(29,message,dh,Q);
+        Q[30]=expand32_2(30,message,dh,Q);
+        Q[31]=expand32_2(31,message,dh,Q);
+        Q[32]=expand32_2(32,message,dh,Q);
+        XL32=Q[16]^Q[17]^Q[18]^Q[19]^Q[20]^Q[21]^Q[22]^Q[23];
+        XH32=XL32^Q[24]^Q[25]^Q[26]^Q[27]^Q[28]^Q[29]^Q[30]^Q[31];
+        dh[0]=(shl(XH32,5)^shr(Q[16],5)^message[0])+(XL32^Q[24]^Q[0]);
+        dh[1]=(shr(XH32,7)^shl(Q[17],8)^message[1])+(XL32^Q[25]^Q[1]);
+        dh[2]=(shr(XH32,5)^shl(Q[18],5)^message[2])+(XL32^Q[26]^Q[2]);
+        dh[3]=(shr(XH32,1)^shl(Q[19],5)^message[3])+(XL32^Q[27]^Q[3]);
+        dh[4]=(shr(XH32,3)^Q[20]^message[4])+(XL32^Q[28]^Q[4]);
+        dh[5]=(shl(XH32,6)^shr(Q[21],6)^message[5])+(XL32^Q[29]^Q[5]);
+        dh[6]=(shr(XH32,4)^shl(Q[22],6)^message[6])+(XL32^Q[30]^Q[6]);
+        dh[7]=(shr(XH32,11)^shl(Q[23],2)^message[7])+(XL32^Q[31]^Q[7]);
+        dh[8]=SPH_ROTL32(dh[4],9)+(XH32^Q[24]^message[8])+(shl(XL32,8)^Q[23]^Q[8]);
+        dh[9]=SPH_ROTL32(dh[5],10)+(XH32^Q[25]^message[9])+(shr(XL32,6)^Q[16]^Q[9]);
+        dh[10]=SPH_ROTL32(dh[6],11)+(XH32^Q[26]^message[10])+(shl(XL32,6)^Q[17]^Q[10]);
+        dh[11]=SPH_ROTL32(dh[7],12)+(XH32^Q[27]^message[11])+(shl(XL32,4)^Q[18]^Q[11]);
+        dh[12]=SPH_ROTL32(dh[0],13)+(XH32^Q[28]^message[12])+(shr(XL32,3)^Q[19]^Q[12]);
+        dh[13]=SPH_ROTL32(dh[1],14)+(XH32^Q[29]^message[13])+(shr(XL32,4)^Q[20]^Q[13]);
+        dh[14]=SPH_ROTL32(dh[2],15)+(XH32^Q[30]^message[14])+(shr(XL32,7)^Q[21]^Q[14]);
+        dh[15]=SPH_ROTL32(dh[3],16)+(XH32^Q[31]^message[15])+(shr(XL32,2)^Q[22]^Q[15]);
+        //compression256 message_dh_end
+	//compression256 dh_finals_start
+	Q[0]=ss0((dh[5]^final_s[5])-(dh[7]^final_s[7])+(dh[10]^final_s[10])+(dh[13]^final_s[13])+(dh[14]^final_s[14]))+final_s[1];
+	Q[1]=ss1((dh[6]^final_s[6])-(dh[8]^final_s[8])+(dh[11]^final_s[11])+(dh[14]^final_s[14])-(dh[15]^final_s[15]))+final_s[2];
+	Q[2]=ss2((dh[0]^final_s[0])+(dh[7]^final_s[7])+(dh[9]^final_s[9])-(dh[12]^final_s[12])+(dh[15]^final_s[15]))+final_s[3];
+	Q[3]=ss3((dh[0]^final_s[0])-(dh[1]^final_s[1])+(dh[8]^final_s[8])-(dh[10]^final_s[10])+(dh[13]^final_s[13]))+final_s[4];
+	Q[4]=ss4((dh[1]^final_s[1])+(dh[2]^final_s[2])+(dh[9]^final_s[9])-(dh[11]^final_s[11])-(dh[14]^final_s[14]))+final_s[5];
+	Q[5]=ss0((dh[3]^final_s[3])-(dh[2]^final_s[2])+(dh[10]^final_s[10])-(dh[12]^final_s[12])+(dh[15]^final_s[15]))+final_s[6];
+	Q[6]=ss1((dh[4]^final_s[4])-(dh[0]^final_s[0])-(dh[3]^final_s[3])-(dh[11]^final_s[11])+(dh[13]^final_s[13]))+final_s[7];
+	Q[7]=ss2((dh[1]^final_s[1])-(dh[4]^final_s[4])-(dh[5]^final_s[5])-(dh[12]^final_s[12])-(dh[14]^final_s[14]))+final_s[8];
+	Q[8]=ss3((dh[2]^final_s[2])-(dh[5]^final_s[5])-(dh[6]^final_s[6])+(dh[13]^final_s[13])-(dh[15]^final_s[15]))+final_s[9];
+	Q[9]=ss4((dh[0]^final_s[0])-(dh[3]^final_s[3])+(dh[6]^final_s[6])-(dh[7]^final_s[7])+(dh[14]^final_s[14]))+final_s[10];
+	Q[10]=ss0((dh[8]^final_s[8])-(dh[1]^final_s[1])-(dh[4]^final_s[4])-(dh[7]^final_s[7])+(dh[15]^final_s[15]))+final_s[11];
+	Q[11]=ss1((dh[8]^final_s[8])-(dh[0]^final_s[0])-(dh[2]^final_s[2])-(dh[5]^final_s[5])+(dh[9]^final_s[9]))+final_s[12];
+	Q[12]=ss2((dh[1]^final_s[1])+(dh[3]^final_s[3])-(dh[6]^final_s[6])-(dh[9]^final_s[9])+(dh[10]^final_s[10]))+final_s[13];
+	Q[13]=ss3((dh[2]^final_s[2])+(dh[4]^final_s[4])+(dh[7]^final_s[7])+(dh[10]^final_s[10])+(dh[11]^final_s[11]))+final_s[14];
+	Q[14]=ss4((dh[3]^final_s[3])-(dh[5]^final_s[5])+(dh[8]^final_s[8])-(dh[11]^final_s[11])-(dh[12]^final_s[12]))+final_s[15];
+	Q[15]=ss0((dh[12]^final_s[12])-(dh[4]^final_s[4])-(dh[6]^final_s[6])-(dh[9]^final_s[9])+(dh[13]^final_s[13]))+final_s[0];
+	Q[16]=expand32_1(16,dh,final_s,Q);
+	Q[17]=expand32_1(17,dh,final_s,Q);
+	Q[18]=expand32_2(18,dh,final_s,Q);
+	Q[19]=expand32_2(19,dh,final_s,Q);
+	Q[20]=expand32_2(20,dh,final_s,Q);
+	Q[21]=expand32_2(21,dh,final_s,Q);
+	Q[22]=expand32_2(22,dh,final_s,Q);
+	Q[23]=expand32_2(23,dh,final_s,Q);
+	Q[24]=expand32_2(24,dh,final_s,Q);
+	Q[25]=expand32_2(25,dh,final_s,Q);
+	Q[26]=expand32_2(26,dh,final_s,Q);
+	Q[27]=expand32_2(27,dh,final_s,Q);
+	Q[28]=expand32_2(28,dh,final_s,Q);
+	Q[29]=expand32_2(29,dh,final_s,Q);
+	Q[30]=expand32_2(30,dh,final_s,Q);
+	Q[31]=expand32_2(31,dh,final_s,Q);
+	Q[32]=expand32_2(32,dh,final_s,Q);
+	XL32=Q[16]^Q[17]^Q[18]^Q[19]^Q[20]^Q[21]^Q[22]^Q[23];
+	XH32=XL32^Q[24]^Q[25]^Q[26]^Q[27]^Q[28]^Q[29]^Q[30]^Q[31];
+	final_s[0]=(shl(XH32,5)^shr(Q[16],5)^dh[0])+(XL32^Q[24]^Q[0]);
+	final_s[1]=(shr(XH32,7)^shl(Q[17],8)^dh[1])+(XL32^Q[25]^Q[1]);
+	final_s[2]=(shr(XH32,5)^shl(Q[18],5)^dh[2])+(XL32^Q[26]^Q[2]);
+	final_s[3]=(shr(XH32,1)^shl(Q[19],5)^dh[3])+(XL32^Q[27]^Q[3]);
+	final_s[4]=(shr(XH32,3)^Q[20]^dh[4])+(XL32^Q[28]^Q[4]);
+	final_s[5]=(shl(XH32,6)^shr(Q[21],6)^dh[5])+(XL32^Q[29]^Q[5]);
+	final_s[6]=(shr(XH32,4)^shl(Q[22],6)^dh[6])+(XL32^Q[30]^Q[6]);
+	final_s[7]=(shr(XH32,11)^shl(Q[23],2)^dh[7])+(XL32^Q[31]^Q[7]);
+	final_s[8]=SPH_ROTL32(final_s[4],9)+(XH32^Q[24]^dh[8])+(shl(XL32,8)^Q[23]^Q[8]);
+	final_s[9]=SPH_ROTL32(final_s[5],10)+(XH32^Q[25]^dh[9])+(shr(XL32,6)^Q[16]^Q[9]);
+	final_s[10]=SPH_ROTL32(final_s[6],11)+(XH32^Q[26]^dh[10])+(shl(XL32,6)^Q[17]^Q[10]);
+	final_s[11]=SPH_ROTL32(final_s[7],12)+(XH32^Q[27]^dh[11])+(shl(XL32,4)^Q[18]^Q[11]);
+	final_s[12]=SPH_ROTL32(final_s[0],13)+(XH32^Q[28]^dh[12])+(shr(XL32,3)^Q[19]^Q[12]);
+	final_s[13]=SPH_ROTL32(final_s[1],14)+(XH32^Q[29]^dh[13])+(shr(XL32,4)^Q[20]^Q[13]);
+	final_s[14]=SPH_ROTL32(final_s[2],15)+(XH32^Q[30]^dh[14])+(shr(XL32,7)^Q[21]^Q[14]);
+	final_s[15]=SPH_ROTL32(final_s[3],16)+(XH32^Q[31]^dh[15])+(shr(XL32,2)^Q[22]^Q[15]);
+	//compression256 dh_finals_end
 
 	// target itself should be in little-endian format, 
 #ifdef NVIDIA
